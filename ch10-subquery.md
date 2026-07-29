@@ -801,7 +801,25 @@ WHERE NOT EXISTS (
   WHERE o.customer_id = c.id
     AND o.status = 'cancelled'
 );
+```
 
+<!--
+解答分析：
+
+題一：(SELECT AVG(amount) FROM orders) 是純量子查詢，回傳一個數字。WHERE amount > 這個數字，篩選高於平均的訂單。
+
+題二：NOT EXISTS 的相關子查詢。對每個顧客，問「這個顧客有沒有 cancelled 的訂單？」如果沒有（NOT EXISTS），就保留這個顧客。
+
+⚠️ 如果改用 NOT IN：WHERE id NOT IN (SELECT customer_id FROM orders WHERE status = 'cancelled')，如果有 customer_id = NULL 的訂單，就會有 NULL 陷阱。NOT EXISTS 更安全。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（續）
+
+```sql
 -- 題三：有訂購記錄的 iPhone 商品
 SELECT p.id, p.name, p.price
 FROM products p
@@ -813,14 +831,6 @@ WHERE p.name LIKE '%iPhone%'
 ```
 
 <!--
-解答分析：
-
-題一：(SELECT AVG(amount) FROM orders) 是純量子查詢，回傳一個數字。WHERE amount > 這個數字，篩選高於平均的訂單。
-
-題二：NOT EXISTS 的相關子查詢。對每個顧客，問「這個顧客有沒有 cancelled 的訂單？」如果沒有（NOT EXISTS），就保留這個顧客。
-
-⚠️ 如果改用 NOT IN：WHERE id NOT IN (SELECT customer_id FROM orders WHERE status = 'cancelled')，如果有 customer_id = NULL 的訂單，就會有 NULL 陷阱。NOT EXISTS 更安全。
-
 題三：LIKE '%iPhone%' 搭配 EXISTS。對每個包含 iPhone 的商品，確認它在 order_items 表裡有記錄（被加入過訂單）。
 -->
 

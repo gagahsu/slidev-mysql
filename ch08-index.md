@@ -202,6 +202,21 @@ SHOW INDEX FROM products 可以查看一張表的所有索引，包括名稱、�
 | 用於 ORDER BY 的欄位 | `ORDER BY created_at DESC` |
 | 需要唯一性的欄位 | `email`、`sku`、`isbn` |
 
+<!--
+索引不是越多越好，要根據查詢模式決定。
+
+加索引的判斷原則：
+1. 這個欄位常常出現在 WHERE、JOIN ON、ORDER BY 裡嗎？→ 適合加
+2. 這個欄位的選擇性（不同值的數量）夠高嗎？→ is_active 只有 0/1，加索引效益很低；email 每筆都不同，加索引效益很高
+3. 這張表的 INSERT/UPDATE 頻率高嗎？→ 如果寫入很頻繁，大量索引會讓寫入變慢
+-->
+
+---
+layout: default
+---
+
+# 什麼時候加索引？（續）
+
 **不適合加索引的欄位：**
 
 | 場景 | 原因 |
@@ -210,14 +225,11 @@ SHOW INDEX FROM products 可以查看一張表的所有索引，包括名稱、�
 | 頻繁 INSERT / UPDATE 的小表 | 索引維護成本高於收益 |
 | 已被其他索引涵蓋的欄位 | 重複建索引浪費空間 |
 
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>實務建議：</b>先觀察，再最佳化，比猜測性地預先加索引更好。
+</div>
+
 <!--
-索引不是越多越好，要根據查詢模式決定。
-
-加索引的判斷原則：
-1. 這個欄位常常出現在 WHERE、JOIN ON、ORDER BY 裡嗎？→ 適合加
-2. 這個欄位的選擇性（不同值的數量）夠高嗎？→ is_active 只有 0/1，加索引效益很低；email 每筆都不同，加索引效益很高
-3. 這張表的 INSERT/UPDATE 頻率高嗎？→ 如果寫入很頻繁，大量索引會讓寫入變慢
-
 實際工作中，我通常的做法是：
 1. 主鍵（PRIMARY KEY）：自動建立
 2. 外鍵欄位（FOREIGN KEY）：一定要建
@@ -464,6 +476,21 @@ CREATE INDEX idx_cust_status_date
   ON orders (customer_id, status, order_date DESC);
 ```
 
+<!--
+複合索引的欄位順序很關鍵：
+1. customer_id（等值查詢 = 100）放最前面
+2. status（等值查詢 = 'completed'）放第二
+3. order_date DESC（排序）放最後
+
+這樣的順序讓 MySQL 能夠：先快速定位 customer_id=100 的資料，再在這個子集裡篩選 status='completed'，最後利用索引的順序直接排序（不需要 filesort）。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（續）
+
 **加索引後的預期 EXPLAIN 結果：**
 
 | 欄位 | 改善前 | 改善後（預期）|
@@ -474,13 +501,6 @@ CREATE INDEX idx_cust_status_date
 | `Extra` | Using where; Using filesort | Using index condition |
 
 <!--
-複合索引的欄位順序很關鍵：
-1. customer_id（等值查詢 = 100）放最前面
-2. status（等值查詢 = 'completed'）放第二
-3. order_date DESC（排序）放最後
-
-這樣的順序讓 MySQL 能夠：先快速定位 customer_id=100 的資料，再在這個子集裡篩選 status='completed'，最後利用索引的順序直接排序（不需要 filesort）。
-
 加索引後，rows 從 100 萬降到幾十到幾百，而且 Using filesort 消失了。
 
 ⚠️ 複合索引的最左前綴規則：只有從最左邊開始連續使用的欄位才能用到索引。(customer_id, status, order_date) 索引可以用在：WHERE customer_id=? 或 WHERE customer_id=? AND status=? 或 WHERE customer_id=? AND status=? AND order_date>?，但不能只用 WHERE status=? 或 WHERE order_date>?。

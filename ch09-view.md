@@ -515,7 +515,21 @@ FROM products p
 JOIN order_items oi ON p.id = oi.product_id
 GROUP BY p.id, p.name, p.category
 ORDER BY total_sold DESC;
+```
 
+<!--
+解答分析：
+
+monthly_revenue_view：GROUP BY YEAR + MONTH，配合 WHERE status = 'completed'。注意這兩個欄位都要列在 GROUP BY 裡。
+
+top_products_view：JOIN products 和 order_items，用 SUM(oi.quantity) 計算每個商品的總銷售數量。注意 p.id、p.name、p.category 都要在 GROUP BY 裡（因為它們不是聚合函式）。
+-->
+
+---
+
+# 練習 1：解題提示（續）
+
+```sql
 -- 3. 查詢 VIEW：2024 年收入最高的三個月
 SELECT year, month, revenue
 FROM monthly_revenue_view
@@ -525,12 +539,6 @@ LIMIT 3;
 ```
 
 <!--
-解答分析：
-
-monthly_revenue_view：GROUP BY YEAR + MONTH，配合 WHERE status = 'completed'。注意這兩個欄位都要列在 GROUP BY 裡。
-
-top_products_view：JOIN products 和 order_items，用 SUM(oi.quantity) 計算每個商品的總銷售數量。注意 p.id、p.name、p.category 都要在 GROUP BY 裡（因為它們不是聚合函式）。
-
 第三個任務展示了 VIEW 的便利：複雜的分組邏輯已經封裝在 VIEW 裡，查詢 VIEW 的 SQL 非常簡單易讀。
 
 ⚠️ 這兩個 VIEW 都包含 GROUP BY 和聚合函式，所以它們是唯讀的（不可更新）。
@@ -597,10 +605,6 @@ SELECT
   manager_id,
   hire_date
 FROM employees;
-
--- 3. 授予只讀 VIEW 的權限（DCL）
-GRANT SELECT ON company_db.public_employees_view
-  TO 'regular_user'@'%';
 ```
 
 <!--
@@ -609,7 +613,19 @@ GRANT SELECT ON company_db.public_employees_view
 public_employees_view：只 SELECT 需要的欄位（id、name、department、hire_date），完全不包含 salary 和 ssn。
 
 hr_employees_view：可以看到 salary，但 ssn 用 CONCAT('****', RIGHT(ssn, 4)) 遮罩成 ****1234 的格式。HR 知道員工有身份證，但看不到完整號碼。
+-->
 
+---
+
+# 練習 2：解題提示（續）
+
+```sql
+-- 3. 授予只讀 VIEW 的權限（DCL）
+GRANT SELECT ON company_db.public_employees_view
+  TO 'regular_user'@'%';
+```
+
+<!--
 安全性的原因：透過 GRANT 語法，你可以精細地控制「哪個使用者可以存取哪個 VIEW」。就算資料庫被入侵，攻擊者拿到的是 regular_user 帳號，他只能查 public_employees_view，看不到薪資和身份證。
 
 這是「最小權限原則」（Principle of Least Privilege）在資料庫上的應用——每個使用者只給他真正需要的最小權限。
