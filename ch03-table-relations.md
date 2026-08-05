@@ -662,7 +662,9 @@ layout: default
 layout: default
 ---
 
-# 練習 1：解題提示
+# 練習 1：解題提示（Part 1）
+
+`users` 與 `posts` — 一對多，外鍵 `user_id` 放在「多」的 `posts` 表：
 
 ```sql
 CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY,
@@ -675,7 +677,33 @@ CREATE TABLE posts (id INT AUTO_INCREMENT PRIMARY KEY,
   INDEX idx_user_id (user_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
 
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>ON DELETE CASCADE：</b>刪除使用者時，他的文章也一起刪除。<code>user_id</code> 加 INDEX，JOIN 查詢才快。
+</div>
+
+<!--
+解答第一部分：users 和 posts。
+
+users ← posts 是一對多，外鍵 user_id 放在 posts 表（「多」的那邊）。
+
+ON DELETE CASCADE 表示刪除使用者時，他的文章也一起刪。這是設計決策——如果希望文章保留（例如改成「已刪除使用者」），可以改用 SET NULL，但那樣 user_id 就不能是 NOT NULL。
+
+⚠️ 注意：posts 表的 user_id 欄位加了 INDEX，這對 JOIN 查詢非常重要。
+
+下一頁看多對多的部分。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 2）
+
+`posts` 與 `tags` — 多對多，需要中介表 `post_tags`：
+
+```sql
 CREATE TABLE tags (id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(50) NOT NULL UNIQUE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -687,17 +715,67 @@ CREATE TABLE post_tags (post_id INT NOT NULL, tag_id INT NOT NULL,
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>複合主鍵 </b><code>(post_id, tag_id)</code> — 同一篇文章不會重複掛同一個標籤。
+</div>
+
 <!--
-解答分析：
+解答第二部分：posts 和 tags 的多對多。
 
-1. users ← posts：一對多，外鍵 user_id 在 posts 表。ON DELETE CASCADE 表示刪除使用者時，他的文章也一起刪。
+多對多無法直接用外鍵表達，需要中介表 post_tags，把它分解成兩個一對多。
 
-2. posts 和 tags：多對多，需要中介表 post_tags。主鍵是複合主鍵 (post_id, tag_id)。
+主鍵是複合主鍵 (post_id, tag_id)，確保同一篇文章不會重複掛同一個標籤。
 
-3. ON DELETE CASCADE 在 post_tags 的兩個外鍵上：刪除文章時，文章的所有標籤關聯也一起刪；刪除標籤時，所有文章和這個標籤的關聯也一起刪（但文章本身不刪）。
+兩個外鍵都設 ON DELETE CASCADE：刪除文章時，文章的所有標籤關聯也一起刪；刪除標籤時，所有文章和這個標籤的關聯也一起刪（但文章本身不刪）。
 
-⚠️ 注意：posts 表的 user_id 欄位加了 INDEX，這對 JOIN 查詢非常重要。
+下一頁補上 comments 表——它同時參照 posts 和 users。
 -->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 3）
+
+`comments` — 同時參照 `posts` 和 `users`，兩個一對多：
+
+```sql
+CREATE TABLE comments (id INT AUTO_INCREMENT PRIMARY KEY,
+  post_id    INT NOT NULL,
+  user_id    INT,
+  content    TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_post_id (post_id),
+  INDEX idx_user_id (user_id),
+  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>兩個外鍵，兩種行為：</b>刪文章 → 留言一起刪（<code>CASCADE</code>）；刪使用者 → 留言保留但作者變匿名（<code>SET NULL</code>）。
+</div>
+
+<!--
+解答第三部分：comments 表。
+
+comments 不是多對多——它同時是兩個一對多的「多」邊：
+- posts → comments：一篇文章有多則留言
+- users → comments：一個使用者寫多則留言
+
+所以兩個外鍵都放在 comments 表，不需要中介表。這是初學者容易搞錯的地方：看到「兩個外鍵」就以為是中介表，其實中介表的關鍵在於它的主鍵是那兩個外鍵組成的複合主鍵。
+
+重點在兩個外鍵用了不同的 ON DELETE：
+
+post_id 用 CASCADE：文章刪了，底下的留言就沒有意義，一起刪。
+
+user_id 用 SET NULL：使用者帳號刪了，留言本身對其他讀者仍有價值，保留下來、作者顯示為匿名。
+
+⚠️ 注意：要用 SET NULL，user_id 就不能有 NOT NULL 約束——所以這裡 user_id 沒有寫 NOT NULL，和 post_id 不同。
+
+兩個外鍵欄位都加了 INDEX。
+-->
+
 
 ---
 layout: default
