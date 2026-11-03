@@ -46,13 +46,11 @@ style: |
 </div>
 
 <!--
-大家好，歡迎來到第七章——JOIN 合併查詢！
+大家好，歡迎來到第七章：JOIN 合併查詢。
 
-前幾章我們學了如何設計資料庫結構，讓不同的資料存在不同的表裡。但這帶來了一個新問題：如果想同時看到多張表的資料，該怎麼辦？
+前幾章我們把顧客、訂單、商品拆進不同的表。可是想看「誰買了什麼」，資料卻分散在好幾張表裡。
 
-這就是 JOIN 要解決的問題。「JOIN 的作用，就是把兩張或多張有關聯的資料表，根據共同欄位合併成一張結果。」
-
-學完這章，大家就能把原本分散在不同表的資料，用一個 SQL 查詢出來。
+這就是 JOIN 要解決的事。「JOIN 的作用，就是把兩張或多張有關聯的資料表，根據共同欄位合併成一張結果。」學完這章，大家就能用一個查詢，把分散的資料合在一起看。
 -->
 
 ---
@@ -69,13 +67,9 @@ layout: default
 - **Self JOIN** — 自身和自身合併
 
 <!--
-這章有六個部分，每種 JOIN 類型各一個部分。
+這一章會介紹五種 JOIN。先學最常用的 INNER JOIN 和 LEFT JOIN，這兩個學會了，其他的都很好理解。接著看 RIGHT JOIN，最後是比較特殊的 CROSS JOIN 和 Self JOIN。
 
-JOIN 的種類看起來很多，但理解了 INNER JOIN 和 LEFT JOIN，其他的就都容易了。
-
-我會用一個貫穿全章的訂單系統範例，讓大家在同一個資料集上看到各種 JOIN 的差異。
-
-特別推薦大家把每種 JOIN 的「集合圖」概念記在腦海裡——左圓、右圓、交集，對應不同的 JOIN 類型。
+整章都會用同一組顧客和訂單資料，讓大家清楚看到每種 JOIN 的差別。
 -->
 
 ---
@@ -105,16 +99,13 @@ CREATE TABLE orders (
 | id=3, Carol（無訂單）| | id=3, customer_id=NULL（未知顧客）| |
 
 <!--
-這是本章所有範例的資料基礎。
+這是整章範例的資料基礎，有兩張表：顧客表 `customers` 和訂單表 `orders`，訂單用 `customer_id` 指向顧客。
 
-customers 表有三個顧客：Alice、Bob、Carol。
-orders 表有三筆訂單：兩筆屬於 Alice，一筆的 customer_id 是 NULL（代表顧客未知）。
+顧客有三位：Alice、Bob、Carol。訂單有三筆，前兩筆都是 Alice 的，第三筆的 `customer_id` 是 NULL，代表不知道是誰下的。
 
-注意：Carol 沒有任何訂單，而 orders 裡有一筆沒有對應顧客的訂單。
+這組資料是刻意設計的，有兩個特別的地方要記住。第一，有顧客沒有任何訂單。第二，有一筆訂單找不到對應的顧客。
 
-這個設計讓我們能清楚看到不同 JOIN 類型的差異——特別是 NULL 值在各種 JOIN 下的行為。
-
-大家先把這個資料結構記住，接下來所有範例都在這個基礎上操作。
+接下來每一種 JOIN，差別就在於怎麼處理這兩種「對不上」的資料。
 -->
 
 ---
@@ -126,11 +117,7 @@ class: flex flex-col justify-center items-center text-center
 # INNER JOIN
 
 <!--
-進入第一部分：INNER JOIN。
-
-INNER JOIN 是最常用的 JOIN 類型，也是初學者最先學習的。
-
-先說結論：INNER JOIN 只回傳「兩張表都有對應資料」的那些筆資料。
+我們從最常用的 INNER JOIN 開始。先說結論：它只保留兩張表都對得上的資料。
 -->
 
 ---
@@ -153,17 +140,15 @@ INNER JOIN 是最常用的 JOIN 類型，也是初學者最先學習的。
 | customer_id=NULL 訂單 ❌ | 找不到對應顧客，不出現在結果 |
 
 <!--
-INNER JOIN 的核心邏輯是「交集」——兩張表都有的才保留。
+「INNER JOIN 只回傳在兩張表中都能找到對應資料的列。如果某一邊沒有對應，就不出現在結果裡。」
 
-在我們的範例裡，只有 Alice（id=1）在兩張表都有記錄：customers 表有 Alice，orders 表有兩筆 customer_id=1 的訂單。
+我們可以想像兩個圓，左邊是顧客，右邊是訂單。INNER JOIN 只取兩個圓重疊的那一塊，也就是交集。
 
-Bob 雖然在 customers 表，但 orders 表裡沒有他的訂單，所以 Bob 不會出現在 INNER JOIN 的結果裡。
+套進我們的資料，只有 Alice 兩邊都有，顧客表有她，訂單表也有她的訂單，所以只有 Alice 會出現。
 
-Carol 同理，沒有訂單所以不出現。
+表格裡也標出了其他人。Bob 和 Carol 在顧客表裡，但沒有訂單，所以不會出現。那筆 `customer_id` 是 NULL 的訂單，找不到對應的顧客，也不會出現。
 
-customer_id=NULL 的訂單，找不到對應的顧客，也不出現。
-
-這是 INNER JOIN 最重要的特性：「兩邊都有才保留。」
+記住一句話就好：「兩邊都有才保留。」
 -->
 
 ---
@@ -193,15 +178,17 @@ ORDER BY c.name, o.id;
 執行後，你會看到 Alice 的兩筆訂單（$500 和 $300）。Bob 和 Carol 不在結果中，customer_id=NULL 的訂單也不在。
 
 <!--
-看這段 SQL，有幾個重點要注意：
+上面是 INNER JOIN 的語法結構，`FROM` 接第一張表，`INNER JOIN` 接第二張表，`ON` 後面寫兩張表怎麼對應。
 
-FROM customers c：用 c 作為 customers 表的別名。別名讓 SQL 更簡潔，在多表 JOIN 時非常重要。
+下面的範例要查出每筆訂單和下單顧客的姓名。
 
-INNER JOIN orders o ON c.id = o.customer_id：ON 後面指定連接條件——customers 的 id 要等於 orders 的 customer_id。
+第一個重點是別名。`FROM customers c` 讓 c 代表顧客表，o 代表訂單表，SQL 會簡潔很多。
 
-SELECT c.name, o.id, o.amount：欄位前加表別名，這在兩張表有同名欄位時（例如都有 id）是必要的，不然 MySQL 不知道你要哪張表的欄位。
+第二個重點是 `ON c.id = o.customer_id`，意思是顧客的 id 要等於訂單裡的 customer_id，兩筆資料才算對上。
 
-⚠️ 常見錯誤：ON 後面的條件寫錯，例如寫成 ON c.id = c.customer_id（兩邊都用 c 前綴），結果會是奇怪的自身 JOIN。
+另外，SELECT 的欄位前面都加了表的別名。兩張表都有 `id` 欄位，不加的話，MySQL 不知道我們要哪一張的。
+
+執行後，會看到 Alice 的兩筆訂單，五百元和三百元。Bob、Carol 和那筆不明訂單都不會出現。
 -->
 
 ---
@@ -213,9 +200,7 @@ class: flex flex-col justify-center items-center text-center
 # LEFT JOIN
 
 <!--
-進入第二部分：LEFT JOIN。
-
-LEFT JOIN 是實際工作中用得非常多的 JOIN 類型，特別是「需要保留某張表所有資料」的場景。
+接下來是 LEFT JOIN，實務上用得非常多，特別是需要保留某張表所有資料的時候。
 -->
 
 ---
@@ -240,16 +225,13 @@ LEFT JOIN 是實際工作中用得非常多的 JOIN 類型，特別是「需要�
 </div>
 
 <!--
-LEFT JOIN 的核心：「左表的所有資料都要保留，右表沒有對應的地方補 NULL。」
+「LEFT JOIN 保留左表的所有列，右表沒有對應的地方填入 NULL。」左表指的是寫在 FROM 後面的那一張。
 
-在我們的範例裡，以 customers 為左表：
-- Alice 有訂單，正常顯示
-- Bob 沒有訂單，但 Bob 還是會出現在結果裡，只是 order_id 和 amount 是 NULL
-- Carol 沒有訂單，同 Bob
+用兩個圓來看，LEFT JOIN 是整個左圓，包含交集的部分。
 
-這就是 LEFT JOIN 和 INNER JOIN 的關鍵差別：LEFT JOIN 讓 Bob 和 Carol 也出現在結果裡。
+套進資料，以顧客為左表。Alice 有訂單，正常顯示。Bob 和 Carol 沒有訂單，但他們還是會出現在結果裡，只是訂單編號和金額都是 NULL。至於那筆不明訂單，它在右表，LEFT JOIN 不會多取，所以不會出現。
 
-最常用的技巧是「LEFT JOIN + WHERE 右表欄位 IS NULL」——這讓我們能找出「左表有、右表沒有」的記錄，例如「從未下訂的顧客」。
+它最常見的用途，就是找出「沒有某樣東西」的資料，例如從來沒下過訂單的顧客。下一頁我們來看怎麼寫。
 -->
 
 ---
@@ -279,15 +261,15 @@ WHERE o.id IS NULL;
 執行後，你會看到 Bob 和 Carol——他們在 customers 表裡，但 orders 表裡沒有他們的訂單。
 
 <!--
-兩個範例展示了 LEFT JOIN 最常用的兩種模式。
+這頁有兩個 LEFT JOIN 最常用的寫法。
 
-第一個：完整的 LEFT JOIN，所有顧客都出現，有訂單的顯示金額，沒訂單的 order_id 和 amount 是 NULL。
+第一段是完整的 LEFT JOIN。執行後，三位顧客都會出現，Alice 有兩筆訂單金額，Bob 和 Carol 的訂單欄位則是 NULL。
 
-第二個：「LEFT JOIN + WHERE IS NULL」找出「沒有訂單的顧客」。邏輯是：LEFT JOIN 後，沒有訂單的顧客 order_id 是 NULL；WHERE o.id IS NULL 只保留這些 NULL 的列，也就是沒有訂單的顧客。
+第二段是一個非常實用的技巧，LEFT JOIN 再加上 `WHERE o.id IS NULL`。原理是這樣的，LEFT JOIN 之後，沒有訂單的顧客，訂單欄位都是 NULL。我們只要把這些列留下來，剩下的就是沒有下過訂單的顧客。執行後會得到 Bob 和 Carol。
 
-這個「LEFT JOIN + IS NULL」的模式非常常用。例如：找出沒有上傳大頭貼的使用者、找出從未被借閱的書籍、找出沒有庫存記錄的商品。
+這個寫法的應用很廣，像是找出沒有上傳大頭貼的使用者、從來沒被借過的書。
 
-⚠️ 注意：WHERE 條件要用右表的欄位加 IS NULL，不是左表的欄位。
+要注意，IS NULL 要判斷的是右表的欄位，判斷左表的欄位就找不到了。
 -->
 
 ---
@@ -299,11 +281,7 @@ class: flex flex-col justify-center items-center text-center
 # RIGHT JOIN
 
 <!--
-進入第三部分：RIGHT JOIN。
-
-RIGHT JOIN 是 LEFT JOIN 的鏡像版本：保留右表所有資料，左表沒有對應的補 NULL。
-
-坦白說，RIGHT JOIN 在實際工作中比較少用——因為你通常可以交換兩張表的位置，用 LEFT JOIN 達到同樣效果。但了解它仍然重要。
+接下來是 RIGHT JOIN。它其實就是 LEFT JOIN 的鏡像，改成保留右表的全部資料。
 -->
 
 ---
@@ -331,16 +309,13 @@ ORDER BY o.id;
 | Bob, Carol ❌ | 他們在左表，RIGHT JOIN 不從左表多取 |
 
 <!--
-RIGHT JOIN 以 orders 為右表，保留所有訂單：
-- Alice 的兩筆訂單正常顯示
-- customer_id=NULL 的訂單也會出現，但 customer_name 是 NULL（找不到對應顧客）
-- Bob 和 Carol 因為在左表（customers），RIGHT JOIN 不會多取他們
+「RIGHT JOIN 保留右表的所有列，左表沒有對應的地方填入 NULL。」右表指的是寫在 JOIN 後面的那一張。
 
-所以 RIGHT JOIN 的結果是「所有訂單都保留，顧客資訊如果找不到就填 NULL」。
+這段查詢以訂單為右表，所以所有訂單都會保留。執行後，Alice 的兩筆訂單正常顯示。第三筆訂單也會出現，但因為找不到顧客，顧客姓名是 NULL。Bob 和 Carol 在左表，沒有訂單，就不會出現。
 
-實際上，大多數人更喜歡用 LEFT JOIN，把 RIGHT JOIN 的效果改寫成 LEFT JOIN。例如這個 RIGHT JOIN 等同於：SELECT ... FROM orders o LEFT JOIN customers c ON c.id = o.customer_id。只要交換兩張表的位置，RIGHT JOIN 就變成 LEFT JOIN 了。
+實務上，RIGHT JOIN 比較少人用。只要把兩張表的位置交換，寫成 `FROM orders` 再 LEFT JOIN 顧客表，結果就完全一樣。
 
-兩種寫法效果完全一樣，大多數工程師選擇 LEFT JOIN 是因為閱讀習慣（從左到右）。
+大多數工程師習慣用 LEFT JOIN，因為從左往右讀比較直覺，整個專案統一用一種寫法，也比較好維護。
 -->
 
 ---
@@ -352,9 +327,7 @@ class: flex flex-col justify-center items-center text-center
 # CROSS JOIN 與 Self JOIN
 
 <!--
-最後兩種 JOIN：CROSS JOIN 和 Self JOIN。
-
-這兩種在日常工作中比前三種少見，但有它們特定的使用場景。
+最後兩種是 CROSS JOIN 和 Self JOIN。它們比較少見，但在特定場景很好用。
 -->
 
 ---
@@ -383,13 +356,13 @@ CROSS JOIN sizes s;
 </div>
 
 <!--
-CROSS JOIN 就是「笛卡兒積」——數學裡的集合乘積。
+「CROSS JOIN 把左表的每一列和右表的每一列都配對一次，產生所有可能的組合。」這在數學上叫做笛卡兒積。
 
-最直觀的例子：服裝電商的商品規格。如果有 3 種顏色（紅、藍、黑）和 3 種尺寸（S、M、L），那所有可能的規格組合就是 3 × 3 = 9 種。用 CROSS JOIN 就能一次生成所有組合，不用手動列舉。
+最直觀的例子是服裝的規格。三種顏色、三種尺寸，所有的組合就是三乘三，九種。這段查詢用 CROSS JOIN 把顏色表和尺寸表配對，執行後就會一次列出九種規格，不用手動一個一個列。
 
-⚠️ 最大的危險是忘記 CROSS JOIN 沒有 ON 條件。如果你把 INNER JOIN 的 ON 條件漏掉，MySQL 會把它當成 CROSS JOIN，結果可能是幾百萬筆資料。這是初學者很容易踩到的坑。
+要注意的是，CROSS JOIN 沒有 ON 條件。兩張表如果各有一萬筆，結果就是一億筆。
 
-如果你看到一個查詢的結果筆數比預期多很多，很可能就是漏了 ON 條件。
+還有一個很常見的坑。寫一般 JOIN 時如果漏了 ON 條件，結果也會變成類似 CROSS JOIN 的全部配對。所以只要發現查詢結果的筆數比預期多很多，第一個就要檢查是不是漏了 ON。
 -->
 
 ---
@@ -416,15 +389,13 @@ LEFT JOIN 確保沒有主管的員工（最高層主管）也會出現在結果�
 </div>
 
 <!--
-Self JOIN 是把一張表和自己合併。
+「Self JOIN 是把一張表和它自己進行 JOIN，用來查詢表內的階層關係或比較關係。」
 
-什麼情況下需要這樣做？最常見的是「樹狀或階層關係」存在同一張表裡。
+最常見的例子是員工和主管。每個員工都有一個 `manager_id`，指向同一張表裡另一個員工。要查出每個人的主管姓名，就得讓員工表跟自己 JOIN。
 
-員工表的例子：每個員工有一個 manager_id，指向同一張表裡另一個員工的 id。要查詢「每個員工和他的主管姓名」，就需要 Self JOIN——一邊代表員工，另一邊代表主管，但兩邊都是 employees 表。
+關鍵在別名。同一張 `employees`，我們叫它 e 的時候代表員工，叫它 m 的時候代表主管。`ON e.manager_id = m.id` 的意思是，員工的主管編號，等於主管的 id。沒有別名的話，MySQL 就分不出這兩個身分。
 
-必須用別名（e 和 m）讓 MySQL 知道你在說哪一個「版本」的 employees 表。
-
-LEFT JOIN（而不是 INNER JOIN）讓最高層的主管（沒有 manager_id 的員工）也出現在結果裡，不然最頂層的人就找不到了。
+這裡用的是 LEFT JOIN。最高層的主管沒有上司，INNER JOIN 會把他排除掉。用 LEFT JOIN，執行後他也會出現，主管欄位顯示 NULL。
 -->
 
 ---
@@ -444,17 +415,11 @@ LEFT JOIN（而不是 INNER JOIN）讓最高層的主管（沒有 manager_id 的
 </div>
 
 <!--
-這是五種 JOIN 類型的總整理。
+這張表把五種 JOIN 整理在一起。
 
-在實際工作中，INNER JOIN 和 LEFT JOIN 用的頻率遠超其他類型：
+實務上，九成的情況用 INNER JOIN 或 LEFT JOIN 就夠了。只需要有關聯的資料，例如訂單和下單顧客，就用 INNER JOIN。需要保留某一邊的全部資料，另一邊可能沒有對應，例如列出所有顧客，包含沒下過單的，就用 LEFT JOIN。
 
-INNER JOIN：當你確定兩邊都有資料，只需要有關聯的記錄。例如：查詢訂單及其對應的顧客名稱（只顯示顧客存在的訂單）。
-
-LEFT JOIN：當你需要保留某一邊的所有資料，另一邊可能沒有對應。例如：查詢所有顧客（含沒有訂單的），或查詢「某條件為空」的記錄。
-
-記住一個原則：「從哪張表出發，就把那張表放在 LEFT JOIN 的左邊。」
-
-做兩道練習，把今天的內容鞏固一下！
+可以記住一個原則：「從哪張表出發，就把那張表放在 LEFT JOIN 的左邊。」
 -->
 
 ---
@@ -474,13 +439,9 @@ LEFT JOIN：當你需要保留某一邊的所有資料，另一邊可能沒有�
 </div>
 
 <!--
-學完這章，大家已經能夠用 JOIN 把分散在多張表的資料合在一起查詢了。
+我們整理一下這一章。INNER JOIN 取交集，兩邊都有才出現。LEFT JOIN 保留左表全部，右表沒有的補 NULL，搭配 IS NULL 就能找出沒有關聯的資料。RIGHT JOIN 可以改寫成 LEFT JOIN。CROSS JOIN 產生所有組合，沒有 ON 條件。Self JOIN 讓表和自己合併，一定要用別名。
 
-最重要的兩個 JOIN：INNER JOIN（取交集）和 LEFT JOIN（保留左表）。
-
-LEFT JOIN + WHERE IS NULL 這個組合特別值得記住，它能幫你找出「沒有對應關聯的記錄」，在實際工作中非常常用。
-
-做兩道練習！
+接下來，我們用兩題練習把這些寫法練熟。
 -->
 
 ---
@@ -505,15 +466,15 @@ layout: default
 3. 查詢每筆訂單包含的商品名稱（需要 JOIN 三張表）
 
 <!--
-這三題難度遞增。
+第一題，我們有顧客、訂單、商品和訂單明細四張表。
 
-第一題是基本的 INNER JOIN，確認大家理解 ON 條件怎麼寫。
+任務有三個，難度逐漸增加。第一個是查出所有完成狀態的訂單，顯示顧客姓名和金額。第二個是找出從來沒下過訂單的顧客。第三個是查出每筆訂單包含了哪些商品，這需要串起三張表。
 
-第二題是 LEFT JOIN + IS NULL 的應用，找出「左表有但右表沒有」的記錄。
+想想看，訂單和商品之間沒有直接的欄位相連，那要經過哪一張表才能把它們接起來？
 
-第三題需要連 JOIN 三張表：orders JOIN order_items JOIN products。
+我們先暫停一下，自己寫寫看。
 
-提示：多表 JOIN 可以連續寫多個 JOIN 子句。
+【講師】給大家十分鐘，可以提示多個 JOIN 子句可以連續寫下去。
 -->
 
 ---
@@ -546,17 +507,15 @@ ORDER BY o.id, p.name;
 ```
 
 <!--
-解答分析：
+我們來看解答。
 
-題一：INNER JOIN 連接顧客和訂單，WHERE status = 'completed' 篩選已完成訂單。
+第一題是基本的 INNER JOIN，用顧客 id 對上訂單的 customer_id，再用 WHERE 篩選狀態是 completed 的訂單，執行後依日期由新到舊列出。
 
-題二：LEFT JOIN 保留所有顧客，WHERE o.id IS NULL 過濾出右表（orders）沒有對應記錄的顧客，就是從未下訂的顧客。
+第二題就是剛才學的技巧，LEFT JOIN 保留所有顧客，再用 `WHERE o.id IS NULL` 留下沒有訂單的人。
 
-題三：連續兩個 INNER JOIN，把三張表串起來：
-orders → order_items（透過 order_id）
-order_items → products（透過 product_id）
+第三題回答了剛才的問題。訂單和商品要透過訂單明細 `order_items` 接起來。先用 `order_id` 把訂單接到明細，再用 `product_id` 把明細接到商品，兩個 INNER JOIN 連續寫下去就可以了。
 
-⚠️ 多表 JOIN 時，一定要用表別名前綴所有欄位，避免 MySQL 不知道你要哪張表的欄位（例如三張表都有 id）。
+多表 JOIN 時，每個欄位前面都要加上表的別名。
 -->
 
 ---
@@ -584,13 +543,15 @@ CREATE TABLE employees (
 2. 找出薪資高於其直屬主管的員工
 
 <!--
-這兩題都需要 Self JOIN。
+第二題要分析員工的組織架構。這張員工表裡，`manager_id` 指向同一張表裡的另一個員工，也就是直屬主管。
 
-第一題：用 LEFT JOIN 確保沒有主管的員工也出現（最高層主管的 manager_id 是 NULL）。
+任務有兩個。第一個是列出每個員工和他主管的姓名，沒有主管的人也要出現。第二個是找出薪水比自己直屬主管還高的員工。
 
-第二題要比較同一張表裡兩筆資料的值。
+這兩題都需要 Self JOIN。想想看，第一題和第二題，應該分別用 LEFT JOIN 還是 INNER JOIN？
 
-提示：JOIN employees e（員工）ON e.manager_id = m.id JOIN employees m（主管）WHERE e.salary > m.salary。
+我們先暫停一下，動手試試看。
+
+【講師】給大家十分鐘，可以提醒先決定好兩個別名各代表什麼身分。
 -->
 
 ---
@@ -622,15 +583,13 @@ ORDER BY e.salary DESC;
 ```
 
 <!--
-解答分析：
+我們來看解答。兩題都用 e 代表員工、m 代表主管，`ON e.manager_id = m.id` 把員工接到他的主管。
 
-題一：用 LEFT JOIN 確保最頂層的主管（manager_id = NULL）也會出現，其 manager_name 顯示 NULL。
+第一題用 LEFT JOIN。最高層的主管沒有上司，用 LEFT JOIN 他才會出現在結果裡，主管欄位顯示 NULL。
 
-別名 e（員工版本）和 m（主管版本）讓 MySQL 能區分同一張表的兩個「身份」。
+第二題用 INNER JOIN，因為我們只關心有主管可以比較的員工。接著用 `WHERE e.salary > m.salary`，比較同一張表裡兩筆資料的薪水。執行後，就會列出薪水比主管高的員工。
 
-題二：用 INNER JOIN 而非 LEFT JOIN，因為我們只需要「有主管」的員工。ON e.manager_id = m.id 建立員工和主管的對應，WHERE e.salary > m.salary 篩選薪資高於主管的員工。
-
-⚠️ 題一用 LEFT JOIN 是因為最頂層主管沒有 manager_id（是 NULL），INNER JOIN 會把他們排除掉。題二用 INNER JOIN 是因為我們只關心「有主管可以比較」的情況。
+【講師】第一題的 NULLS LAST 不是 MySQL 支援的語法，現場執行前請先拿掉，或改成 ORDER BY m.name IS NULL, m.name。
 -->
 
 ---
@@ -642,11 +601,9 @@ layout: end
 有任何問題嗎？
 
 <!--
-現在開放 Q&A 時間。
+今天我們學了五種 JOIN，最重要的是 INNER JOIN 和 LEFT JOIN。記住一句話：「INNER JOIN 只取交集，LEFT JOIN 保留左表全部。」再加上 LEFT JOIN 配 IS NULL 的技巧，就能處理大部分的合併查詢。
 
-大家對 JOIN 有沒有什麼疑問？
+不過 JOIN 的表一多、資料一大，查詢就可能變慢。下一章，我們要學索引和 EXPLAIN，看看怎麼讓查詢跑得更快。我們下一章見。
 
-最容易搞混的是 INNER JOIN 和 LEFT JOIN 的差別——記住：「INNER JOIN 只取交集，LEFT JOIN 保留左表全部。」
-
-下一章我們會學 Index 和 EXPLAIN，了解如何讓 JOIN 查詢跑得更快！
+【講師】開放提問，可以請同學用自己的話說明 INNER JOIN 和 LEFT JOIN 的差別。
 -->

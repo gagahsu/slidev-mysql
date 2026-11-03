@@ -46,15 +46,11 @@ style: |
 </div>
 
 <!--
-大家好，歡迎來到第九章——VIEW 視圖！
+大家好，歡迎來到第九章：VIEW 視圖。
 
-學到這裡，大家已經能夠寫出各種複雜的 SQL 查詢了。但你有沒有遇過這樣的情況：同一段複雜的 JOIN 查詢，在很多地方都會用到，每次都要重複寫一遍？
+學到這裡，大家已經能寫出很複雜的查詢了。不過同一段複雜的查詢，報表要用、後台也要用，每次都得重寫一遍，改規則時還得到處找。
 
-VIEW（視圖）就是解決這個問題的工具。
-
-「VIEW 是一張虛擬的資料表，背後是一個 SELECT 查詢。」每次對 VIEW 做查詢，MySQL 就執行背後的 SELECT，把結果呈現為一張表的樣子。
-
-學完這章，大家就能把複雜的查詢邏輯包裝起來，讓 SQL 程式碼更乾淨、更容易維護。
+VIEW 就是為了解決這個問題。它能把一段複雜的查詢包裝起來，取一個名字，下次直接拿來用。學完這章，大家寫出來的 SQL 會更乾淨，也更好維護。
 -->
 
 ---
@@ -70,11 +66,9 @@ layout: default
 - **VIEW 的使用注意事項** — 效能考量與最佳實踐
 
 <!--
-這章的結構很清楚：先說什麼是 VIEW、為什麼用，然後學建立和管理的語法，最後說進階的可更新視圖和使用注意事項。
+這一章先認識 VIEW 是什麼，有哪些優點和限制。接著學怎麼建立 VIEW，以及查看、修改、刪除的管理方式。最後是進階的部分，什麼樣的 VIEW 可以拿來新增修改資料，以及使用時要注意的效能問題。
 
-VIEW 是一個相對好理解的概念，主要的挑戰是了解「什麼時候用 VIEW 是好的選擇」，以及「可更新視圖」的限制。
-
-我們用一個貫穿全章的訂單系統範例，讓大家看到 VIEW 在實際工作中的樣子。
+整章會延續我們熟悉的顧客和訂單範例。
 -->
 
 ---
@@ -95,14 +89,11 @@ VIEW 是一個相對好理解的概念，主要的挑戰是了解「什麼時候
 </div>
 
 <!--
-VIEW 和 TABLE 最大的差別是：TABLE 真正儲存資料，VIEW 只是一個「窗口」，透過它你能看到背後查詢的結果。
+「VIEW 是一張虛擬的資料表，它的內容由一個 SELECT 查詢定義。VIEW 本身不儲存任何資料，每次查詢 VIEW 時，MySQL 會執行背後的 SELECT。」
 
-想像你有一個 Excel 試算表，有一張原始資料工作表，另外有一張工作表裡全是公式，引用原始資料並做計算。VIEW 就是那張「全是公式的工作表」——它本身沒有資料，但透過它你能看到整理後的資訊。
+我們用 Excel 來想像。一份試算表裡，有一張工作表放原始資料，另一張工作表全是公式，引用原始資料並整理成報表。那張全是公式的工作表，本身沒存資料，打開時才即時算出結果。VIEW 就是這樣的東西。
 
-這個特性決定了 VIEW 的用途：
-1. 簡化查詢：把複雜的多表 JOIN 封裝成一個 VIEW，其他人只需要 SELECT * FROM that_view
-2. 存取控制：給特定使用者只能查看 VIEW，不讓他們直接存取原始表
-3. 封裝業務邏輯：把「有上架的商品中，庫存大於 0 的手機」這個條件封裝到 VIEW 裡
+表格比較了它和資料表的差別。資料表真的存資料，VIEW 只是一扇窗。兩者都能查詢，但 VIEW 要修改資料會有條件限制，後面會講。
 -->
 
 ---
@@ -120,15 +111,15 @@ VIEW 和 TABLE 最大的差別是：TABLE 真正儲存資料，VIEW 只是一個
 </div>
 
 <!--
-讓我特別說明這三個優點的實際意義：
+表格列出了 VIEW 的三大優點。
 
-簡化查詢：假設你的報表需要一個複雜的查詢，涉及 customers、orders、order_items、products 四張表的 JOIN，還有一些計算欄位。把這個查詢封裝成 VIEW，報表的 SQL 就變成簡單的 SELECT * FROM monthly_sales_view WHERE month = '2024-01'，任何人都看得懂。
+第一是簡化查詢。假設月報表要 JOIN 四張表，還要計算欄位，把它包成 VIEW 之後，報表的 SQL 只剩一行 SELECT，任何人都看得懂。
 
-安全性：假設 customers 表有 email、phone、credit_card 等敏感資訊，你可以建立一個 VIEW 只包含 id 和 name，讓客服人員只能查 VIEW，看不到敏感資料。
+第二是安全性。顧客表裡可能有電話、信用卡這些敏感資料，我們可以建一個只有編號和姓名的 VIEW，讓客服只能查這個 VIEW。
 
-可維護性：如果「活躍訂單」的定義改變了（例如從 status='active' 改成 status IN ('active', 'pending')），只需要修改 VIEW 定義，所有用到 active_orders_view 的地方都自動更新。
+第三是可維護性。如果「有效訂單」的定義改了，只要修改 VIEW 這一個地方，所有用到它的查詢都會跟著更新。
 
-⚠️ 但要記住：VIEW 不會讓查詢變快。如果背後的 SELECT 很慢，VIEW 也會很慢。
+不過要特別提醒，VIEW 不是效能工具。每次查詢 VIEW，背後的 SELECT 都會重新執行。原本的查詢很慢，包成 VIEW 也一樣慢。
 -->
 
 ---
@@ -140,9 +131,7 @@ class: flex flex-col justify-center items-center text-center
 # CREATE VIEW — 建立視圖
 
 <!--
-進入第一部分，學習建立 VIEW 的語法。
-
-語法很簡單，但我們會看幾個實際的使用場景。
+接下來我們動手建立 VIEW。語法很簡單，重點是看它在實際場景裡怎麼用。
 -->
 
 ---
@@ -172,15 +161,13 @@ GROUP BY c.id, c.name;
 ```
 
 <!--
-CREATE VIEW 的語法就是在 SELECT 語句前面加上 CREATE VIEW view_name AS。
+上面是 VIEW 的語法結構，其實就是在 SELECT 前面加上 `CREATE VIEW` 名稱 `AS`。方括號裡的 `OR REPLACE` 是選用的，如果 VIEW 已經存在，就直接覆蓋，不用先刪除再建立。
 
-OR REPLACE 讓你在 VIEW 已存在時直接覆蓋，不需要先 DROP 再 CREATE。這在開發時很方便。
+下面的範例建立了一個叫 `customer_order_summary` 的 VIEW，要做的是統計每位有效顧客的訂單數和消費總額。
 
-看這個 VIEW 的定義：它把 customers 和 orders 的 JOIN，加上聚合計算，封裝成一個叫 customer_order_summary 的虛擬表。
+它的內容大家應該很熟悉，用 LEFT JOIN 把顧客和訂單接起來，篩選有效顧客，再依顧客分組，算出訂單數和總金額。用 LEFT JOIN 是為了讓沒下過單的顧客也會出現。
 
-之後任何人想查顧客的訂單摘要，只需要：SELECT * FROM customer_order_summary WHERE customer_id = 5。
-
-不需要再寫那個複雜的 JOIN + GROUP BY，VIEW 幫你記住了這個查詢邏輯。
+執行後，資料庫裡就多了一張虛擬表。之後想查顧客的消費摘要，不用再寫這整段 JOIN 加分組，直接查這個 VIEW 就可以了。
 -->
 
 ---
@@ -206,15 +193,15 @@ JOIN addresses a ON v.customer_id = a.customer_id;
 ```
 
 <!--
-這是 VIEW 最迷人的地方：建立後，它就像一張真正的表，可以 SELECT、可以加 WHERE 條件、可以和其他表 JOIN。
+VIEW 建好之後，用起來就跟一般的資料表一樣。
 
-第一個：直接 SELECT * 查看所有顧客的訂單摘要。
+第一個查詢直接 `SELECT *`，執行後會列出所有有效顧客的訂單數和消費總額。
 
-第二個：在 VIEW 上加 WHERE 條件，篩選消費總額超過 10000 的顧客。這個 WHERE 條件是在 VIEW 結果上篩選，不影響 VIEW 的定義。
+第二個查詢在 VIEW 上再加條件，篩選消費超過一萬元的顧客，並依金額由高到低排列。這個 WHERE 是對 VIEW 的結果做篩選，不會改變 VIEW 本身的定義。
 
-第三個：VIEW 可以和其他表 JOIN！把 customer_order_summary 視圖和 addresses 表 JOIN，取得顧客的城市資訊。
+第三個查詢把 VIEW 跟地址表 `addresses` JOIN 起來，取得顧客所在的城市。
 
-對於使用 VIEW 的人來說，他們完全不需要知道背後是怎麼實作的——這就是封裝的威力。
+使用 VIEW 的人，完全不需要知道它背後是怎麼寫的。這就是封裝的好處，複雜的邏輯藏起來，留下簡單好用的介面。
 -->
 
 ---
@@ -242,15 +229,13 @@ WHERE is_active = 1;
 </div>
 
 <!--
-這個例子展示了 VIEW 的安全性用途。
+這個範例示範 VIEW 的另一個用途，就是保護敏感資料。
 
-原始 customers 表可能有很多敏感欄位（email、電話、信用卡 hash）。我們不希望所有人都能直接查詢這張表。
+原本的顧客表裡有 email、電話、信用卡資料這些敏感欄位。我們建立一個叫 `public_customers` 的 VIEW，只放顧客編號和姓名，email 則做遮罩，只露出前三個字元，後面用星號蓋住。
 
-建立 public_customers VIEW，只暴露必要的 id 和 name，email 則做遮罩處理（只顯示前三個字元）。
+接著用 MySQL 的權限設定，讓客服系統的帳號只能查詢這個 VIEW，不能直接碰原本的顧客表。這樣客服查得到需要的資訊，卻看不到完整的 email 和信用卡資料。
 
-之後可以用 MySQL 的權限系統（GRANT）讓某個資料庫使用者只能存取這個 VIEW，而不能直接存取 customers 表。
-
-這樣客服人員可以透過 VIEW 查到他們需要的客戶資訊，但無法看到完整的敏感資料。
+【講師】範例中用兩條直線串接字串的寫法，在 MySQL 預設設定下是邏輯 OR，不會串接字串。實際執行請改用 `CONCAT(LEFT(email, 3), '***@***.com')`。
 -->
 
 ---
@@ -262,7 +247,7 @@ class: flex flex-col justify-center items-center text-center
 # 管理 VIEW
 
 <!--
-進入第二部分，學習查看、修改和刪除 VIEW 的方法。
+VIEW 建立之後，還需要查看、修改和刪除。我們來看管理的方式。
 -->
 
 ---
@@ -294,17 +279,15 @@ DROP VIEW IF EXISTS customer_order_summary;
 ```
 
 <!--
-管理 VIEW 的語法和管理 TABLE 很類似。
+管理 VIEW 的語法，跟管理資料表很像。
 
-SHOW FULL TABLES WHERE Table_type = 'VIEW' 列出所有的 VIEW，過濾掉真正的資料表。這在資料庫有很多表和 VIEW 時很有用，讓你快速找到所有 VIEW。
+第一行 `SHOW FULL TABLES`，加上類型等於 VIEW 的條件，就能只列出資料庫裡所有的 VIEW。資料表一多的時候，這個很好用。第二行 `SHOW CREATE VIEW` 會顯示這個 VIEW 完整的定義內容。
 
-SHOW CREATE VIEW 顯示 VIEW 的完整定義，和 SHOW CREATE TABLE 的輸出類似。
+要修改 VIEW，最簡單的方法是 `CREATE OR REPLACE VIEW`。範例在原本的定義裡多加了 email 欄位，執行後就直接覆蓋掉舊的版本。要注意 GROUP BY 也要跟著加上 email。
 
-修改 VIEW 最簡單的方式是用 CREATE OR REPLACE VIEW——直接覆蓋原來的定義，不需要先 DROP 再 CREATE。
+最後是 `DROP VIEW IF EXISTS`，用來刪除 VIEW。
 
-DROP VIEW IF EXISTS 安全地刪除 VIEW，如果不存在也不報錯。
-
-⚠️ 注意：刪除 VIEW 不會影響底層的資料表，只是移除了這個「窗口」的定義。
+刪除 VIEW 不會影響底層的資料表。我們只是拆掉了這扇窗，窗外的資料都還在。
 -->
 
 ---
@@ -316,9 +299,7 @@ class: flex flex-col justify-center items-center text-center
 # 可更新視圖與注意事項
 
 <!--
-最後一個部分，我們說兩個進階主題：可更新視圖，以及使用 VIEW 的注意事項。
-
-可更新視圖是很多人不知道的功能，但它有嚴格的限制，要小心使用。
+最後一部分是進階主題。什麼樣的 VIEW 可以用來修改資料，以及使用 VIEW 時的注意事項。
 -->
 
 ---
@@ -348,13 +329,15 @@ DELETE FROM active_products WHERE id = 5;
 </div>
 
 <!--
-可更新視圖讓我們能透過 VIEW 修改底層資料，這在某些情況下很方便。
+有些 VIEW 允許我們透過它，對底層的資料表做新增、修改和刪除。
 
-但要記住：透過 VIEW 執行 UPDATE 或 DELETE，實際上是修改底層的 products 表。VIEW 只是一個「透明的窗口」，寫入的資料流向底層表。
+範例先建了一個 `active_products`，只包含上架中的商品。接著對這個 VIEW 執行 UPDATE，把五號商品的價格改掉，再執行 DELETE 把它刪除。
 
-一個有趣的細節：如果 VIEW 有 WHERE 條件（如 WHERE is_active = 1），你可以透過 VIEW UPDATE 一筆原本符合條件的資料，讓它變成不符合條件（例如把 is_active 設為 0）。更新後，這筆資料就從 VIEW 裡「消失」了（因為不再符合 WHERE 條件），但在底層 products 表還是存在的。這有時候會讓人困惑。
+要記住，這些操作實際上作用在底層的 `products` 表。執行後，商品表裡五號商品的價格真的被改了，接著也真的被刪掉了。
 
-可以用 WITH CHECK OPTION 來防止這種情況：WITH CHECK OPTION 確保透過 VIEW 修改的資料仍然符合 VIEW 的 WHERE 條件。
+這裡有個容易困惑的細節。如果透過這個 VIEW，把某個商品的上架狀態改成 0，它就不再符合 VIEW 的條件，從 VIEW 裡消失，但在商品表裡還在。
+
+要避免這種狀況，可以在建立 VIEW 時加上 `WITH CHECK OPTION`，確保透過 VIEW 修改後的資料，依然符合 VIEW 的條件。
 -->
 
 ---
@@ -377,15 +360,15 @@ DELETE FROM active_products WHERE id = 5;
 </div>
 
 <!--
-大多數複雜的 VIEW 都是唯讀的。
+大多數比較複雜的 VIEW，其實都是唯讀的。表格列出了不能更新的情況，包含 DISTINCT、聚合函式、GROUP BY、UNION、子查詢，以及多張表的 JOIN。
 
-最直觀的例子：如果 VIEW 裡有 COUNT(*) AS order_count，這個欄位是計算出來的，你不能透過修改 VIEW 的 order_count 來改變底層的訂單數量——你要真的 DELETE FROM orders 才行。
+判斷原則就在畫面下方：VIEW 的每一列，能不能對應到底層表的唯一一列。
 
-包含 GROUP BY 的 VIEW（例如我們前面建立的 customer_order_summary）也是唯讀的，因為它的每一列對應的是「多筆訂單的摘要」，而不是一筆特定的底層資料。
+舉例來說，VIEW 裡的訂單數量是 COUNT 算出來的，我們不可能把它從五改成三，就讓底層少掉兩筆訂單。真的要減少訂單，只能直接刪除訂單表裡的資料。
 
-多表 JOIN 的可更新性比較複雜：某些簡單的 JOIN（例如只取一張表的欄位）可能可以更新，但複雜的多表 JOIN 通常不行。
+我們前面建的 `customer_order_summary` 有分組，每一列代表很多筆訂單的摘要，所以它也是唯讀的。
 
-實際工作中，如果需要透過 VIEW 做 DML，建議先實際測試，確認 MySQL 是否允許，不要假設它可以。
+需要透過 VIEW 修改資料時，建議先實際測試。
 -->
 
 ---
@@ -413,15 +396,13 @@ WHERE ... AND ...;
 ```
 
 <!--
-VIEW 最大的效能陷阱是「每次查詢都重新執行」。
+最後來看效能。VIEW 讓程式碼變乾淨，但有一個陷阱：它不儲存資料，也不會快取結果。
 
-VIEW 不儲存資料，也不快取查詢結果。每次你 SELECT * FROM complex_view，MySQL 就把 VIEW 的定義展開，執行那個複雜的 SQL，然後把結果回傳給你。
+所以表格第二列提到，如果 VIEW 背後是四張表的 JOIN，每次查詢都會重新執行一次這個 JOIN，資料量大時就可能很慢。好消息是，在 VIEW 上加 WHERE 條件時，MySQL 有時能把條件往內推，提早過濾資料。
 
-如果 VIEW 背後是一個涉及 4 張表 JOIN 的查詢，你每次查詢都在執行那個 4 表 JOIN。在大資料量下，這可能很慢。
+特別要避免的是 VIEW 套 VIEW，也就是一個 VIEW 建立在另一個 VIEW 上，一層套一層。MySQL 要全部展開才能執行，效能很難掌握。程式碼裡的對照，就是建議這種情況直接查詢底層表，搭配合適的索引。
 
-特別要避免的是「VIEW 套 VIEW」——例如 VIEW A 建立在 VIEW B 上，VIEW B 又建立在 VIEW C 上。MySQL 需要展開所有層次，查詢規劃變得非常複雜，效能可能很差。
-
-如果你需要快取查詢結果，考慮使用「物化視圖」（Materialized View）——但 MySQL 原生不支援物化視圖，你需要手動建立一張實體表，用排程任務定期更新。
+如果真的需要把結果存起來，MySQL 本身不支援物化視圖，常見做法是另外建一張實體表，用排程定期更新。
 -->
 
 ---
@@ -442,19 +423,11 @@ VIEW 不儲存資料，也不快取查詢結果。每次你 SELECT * FROM comple
 </div>
 
 <!--
-學完這章，大家已經學會了 VIEW 這個讓程式碼更乾淨的工具。
+我們整理這一章。VIEW 是一張虛擬資料表，背後是一個 SELECT，本身不存資料。它有三大優點：簡化查詢、保護敏感資料、集中管理業務邏輯。我們學了用 `CREATE OR REPLACE VIEW` 建立和修改，用 `SHOW` 查看，用 `DROP VIEW` 刪除。
 
-VIEW 最適合的使用場景：
-1. 有一個複雜的 JOIN 查詢會在很多地方重複使用
-2. 需要對不同的人/系統提供不同層次的資料存取控制
-3. 業務邏輯封裝（例如「活躍商品」的定義）
+單表、沒有聚合、沒有分組的簡單 VIEW 可以修改資料，複雜的大多是唯讀的。而且 VIEW 不會讓查詢變快。
 
-VIEW 不適合的場景：
-1. 為了提升效能（VIEW 不做快取）
-2. 頻繁需要 INSERT/UPDATE 的場景（大多數複雜 VIEW 是唯讀的）
-
-恭喜大家完成了 MySQL 基礎課程的九個章節！
-做兩道練習，把今天的 VIEW 知識鞏固一下。
+接下來，我們用兩題練習把 VIEW 練熟。
 -->
 
 ---
@@ -479,13 +452,15 @@ layout: default
 3. 對 `monthly_revenue_view` 執行查詢，找出 2024 年收入最高的三個月
 
 <!--
-這三個任務考驗 VIEW 在報表場景的應用。
+第一題，我們用訂單、顧客、訂單明細和商品四張表，建立報表用的 VIEW。
 
-第一個：GROUP BY YEAR(order_date), MONTH(order_date) + WHERE status = 'completed'
+任務有三個。第一，建立 `monthly_revenue_view`，顯示每個月已完成訂單的數量和總收入。第二，建立 `top_products_view`，統計每個商品總共賣出多少件。第三，查詢第一個 VIEW，找出 2024 年收入最高的三個月。
 
-第二個：JOIN order_items 和 products，GROUP BY product，SUM(quantity) 計算總銷售
+可以想想看，建好 VIEW 之後，第三個任務的查詢會變得多簡單？
 
-第三個：建立好第一個 VIEW 後，對它執行 SELECT + WHERE YEAR = 2024 + ORDER BY + LIMIT 3
+我們先暫停一下，動手寫寫看。
+
+【講師】給大家十分鐘，可以提醒前兩個任務就是上一章學過的分組統計。
 -->
 
 ---
@@ -518,11 +493,13 @@ ORDER BY total_sold DESC;
 ```
 
 <!--
-解答分析：
+我們來看前兩個 VIEW 的解答。
 
-monthly_revenue_view：GROUP BY YEAR + MONTH，配合 WHERE status = 'completed'。注意這兩個欄位都要列在 GROUP BY 裡。
+`monthly_revenue_view` 先用 WHERE 篩選已完成的訂單，再用 `YEAR` 和 `MONTH` 依年月分組，算出訂單數和收入總和。年和月兩個都要列在 GROUP BY 裡。
 
-top_products_view：JOIN products 和 order_items，用 SUM(oi.quantity) 計算每個商品的總銷售數量。注意 p.id、p.name、p.category 都要在 GROUP BY 裡（因為它們不是聚合函式）。
+`top_products_view` 把商品表和訂單明細 JOIN 起來，用 `SUM(oi.quantity)` 算出每個商品總共賣了幾件。這裡 SELECT 了商品的編號、名稱和分類，它們都不是聚合函式，所以也都要列在 GROUP BY 裡。
+
+執行後，資料庫裡就多了兩張報表用的虛擬表，可以直接拿來查詢。
 -->
 
 ---
@@ -539,9 +516,11 @@ LIMIT 3;
 ```
 
 <!--
-第三個任務展示了 VIEW 的便利：複雜的分組邏輯已經封裝在 VIEW 裡，查詢 VIEW 的 SQL 非常簡單易讀。
+第三個任務展示了 VIEW 的便利。複雜的分組邏輯已經包在 VIEW 裡，現在只要從 `monthly_revenue_view` 篩選 2024 年，依收入由高到低排序，取前三筆就好。
 
-⚠️ 這兩個 VIEW 都包含 GROUP BY 和聚合函式，所以它們是唯讀的（不可更新）。
+執行後，就能看到 2024 年收入最高的三個月。
+
+也要提醒，這兩個 VIEW 都有分組和聚合函式，所以都是唯讀的，不能透過它們修改資料。
 -->
 
 ---
@@ -571,11 +550,15 @@ CREATE TABLE employees (
 3. 說明為什麼這些 VIEW 比直接給查詢權限更安全
 
 <!--
-這題考驗 VIEW 在安全性方面的應用。
+第二題是設計安全性的 VIEW。這張員工表裡有薪資和身分證字號這些敏感資料。
 
-提示：可以用 RIGHT(ssn, 4) 取最後四碼，然後用 CONCAT('****', RIGHT(ssn, 4)) 組合遮罩後的身份證字號。
+任務有三個。第一，建立一個給一般員工看的 VIEW，只能看到編號、姓名和部門，看不到薪資和身分證字號。第二，建立一個給人資部門的 VIEW，可以看到所有資訊，但身分證字號只顯示後四碼。第三，說明為什麼用 VIEW 比直接開放資料表權限更安全。
 
-思考第三題：如果直接給某個資料庫帳號 SELECT 權限，他能看到所有欄位；但如果只給他 VIEW 的 SELECT 權限，他只能看到 VIEW 定義的欄位。
+可以想想看，要取出字串的最後四個字元，再在前面補上星號，該用哪些函式？
+
+我們先暫停一下，自己寫寫看。
+
+【講師】給大家十分鐘，可以提示 RIGHT 和 CONCAT 這兩個函式。
 -->
 
 ---
@@ -608,11 +591,13 @@ FROM employees;
 ```
 
 <!--
-解答分析：
+我們來看前兩個 VIEW。
 
-public_employees_view：只 SELECT 需要的欄位（id、name、department、hire_date），完全不包含 salary 和 ssn。
+`public_employees_view` 很單純，只 SELECT 需要公開的欄位，編號、姓名、部門和到職日，完全不包含薪資和身分證字號。
 
-hr_employees_view：可以看到 salary，但 ssn 用 CONCAT('****', RIGHT(ssn, 4)) 遮罩成 ****1234 的格式。HR 知道員工有身份證，但看不到完整號碼。
+`hr_employees_view` 保留了薪資，身分證字號則用 `CONCAT('****', RIGHT(ssn, 4))` 處理。`RIGHT` 取出最後四碼，`CONCAT` 再在前面接上四個星號。
+
+執行後，人資查到的會是四個星號加上後四碼，知道是哪個人，卻看不到完整的號碼。
 -->
 
 ---
@@ -626,9 +611,11 @@ GRANT SELECT ON company_db.public_employees_view
 ```
 
 <!--
-安全性的原因：透過 GRANT 語法，你可以精細地控制「哪個使用者可以存取哪個 VIEW」。就算資料庫被入侵，攻擊者拿到的是 regular_user 帳號，他只能查 public_employees_view，看不到薪資和身份證。
+第三個任務要說明，為什麼這樣比較安全。
 
-這是「最小權限原則」（Principle of Least Privilege）在資料庫上的應用——每個使用者只給他真正需要的最小權限。
+關鍵在權限。畫面上的 `GRANT SELECT` 只把 `public_employees_view` 的查詢權限給了一般使用者的帳號。就算這個帳號外洩，拿到它的人也只能查這個 VIEW，看不到薪資和身分證。
+
+這就是「最小權限原則」：每個使用者只拿到他真正需要的權限。
 -->
 
 ---
@@ -640,19 +627,9 @@ layout: end
 有任何問題嗎？
 
 <!--
-現在開放 Q&A 時間。
+今天我們學了 VIEW。它能簡化查詢、保護敏感資料、集中管理邏輯，但要記住，VIEW 是讓程式碼更乾淨、更安全的工具，不是讓查詢變快的工具。
 
-大家對 VIEW 有沒有什麼疑問？
+下一章，我們要學子查詢，把一個查詢的結果，當成另一個查詢的條件或資料來源。我們下一章見。
 
-最重要的觀念：VIEW 是「簡化程式碼和控制存取的工具」，不是「提升效能的工具」。
-
-恭喜大家完成了九個章節！MySQL 的基礎課程到這裡告一段落。
-
-如果大家想繼續深入，接下來可以學習：
-- Stored Procedure（預存程序）
-- Transaction（交易管理）
-- Window Functions（視窗函式）
-- Trigger（觸發器）
-
-感謝大家的參與！
+【講師】開放提問，也可以請同學想想自己的專案裡，哪段查詢適合包成 VIEW。
 -->

@@ -46,13 +46,11 @@ style: |
 </div>
 
 <!--
-大家好，歡迎來到第六章——DML 資料操作語言！
+大家好，歡迎來到第六章：DML 資料操作語言。
 
-DDL 蓋好了資料庫的結構，DQL 學會了怎麼查詢資料，現在我們要學怎麼對資料「動手術」——新增、修改和刪除。
+我們用 DDL 蓋好了資料表，也用 DQL 學會了查詢。可是表裡的資料從哪裡來？商品改價、會員退出，資料又要怎麼跟著變？
 
-DML（Data Manipulation Language）包含三個核心指令：INSERT、UPDATE、DELETE。
-
-這三個指令是資料庫應用開發中使用頻率最高的操作，幾乎每一個 CRUD（Create/Read/Update/Delete）應用都離不開它們。
+這就是 DML 要處理的事。它有三個核心指令：INSERT 新增、UPDATE 修改、DELETE 刪除。學完這章，大家不只會用，還會知道怎麼安全地用。
 -->
 
 ---
@@ -68,13 +66,7 @@ layout: default
 - **INSERT ON DUPLICATE KEY UPDATE** — 存在則更新，不存在則新增
 
 <!--
-這章有五個部分。
-
-INSERT、UPDATE、DELETE 是三個獨立的語法，我們一個一個說清楚。
-
-特別重要的是「安全習慣」的部分——UPDATE 和 DELETE 操作不當，可能造成大規模的資料損失。我會告訴大家怎麼保護自己。
-
-最後的 INSERT ... ON DUPLICATE KEY UPDATE 是實際開發中非常實用的進階語法。
+這一章會依序學三個指令。先用 INSERT 新增資料，包括一次多筆，以及從其他表複製。接著是 UPDATE 修改和 DELETE 刪除，這兩個如果用錯，可能一次毀掉整張表，所以我們會花時間建立安全習慣，並學會用交易來保護資料。最後是兩個進階的新增技巧，處理資料重複時該怎麼辦。
 -->
 
 ---
@@ -101,11 +93,13 @@ CREATE TABLE products (
 </div>
 
 <!--
-這張 products 表和第五章用的一樣，但多了一個 updated_at 欄位。
+這章的範例資料表，跟上一章的商品表幾乎一樣，只多了一個 `updated_at` 欄位。
 
-ON UPDATE CURRENT_TIMESTAMP 是很實用的 MySQL 功能：每次這筆資料被 UPDATE 時，updated_at 欄位會自動更新為當前時間。這讓你不需要在每個 UPDATE 語句裡手動設定 updated_at = NOW()，資料庫幫你自動處理。
+重點在它後面的 `ON UPDATE CURRENT_TIMESTAMP`。意思是，每當這筆資料被修改，`updated_at` 就會自動更新成當下的時間。
 
-這種「自動記錄最後更新時間」的設計在實際應用中非常普遍，建議所有需要追蹤修改時間的資料表都加上這個欄位。
+這樣我們寫 UPDATE 的時候，就不用每次都手動設定修改時間，資料庫會自動處理。執行後，每一筆商品都會記得自己最後一次被修改是什麼時候。
+
+這種自動記錄最後更新時間的設計，在實務上非常普遍。需要追蹤修改時間的資料表，都很建議加上這個欄位。
 -->
 
 ---
@@ -117,9 +111,7 @@ class: flex flex-col justify-center items-center text-center
 # INSERT — 新增資料
 
 <!--
-進入第一部分，學習 INSERT 語法。
-
-INSERT 就是把新的資料放進資料表裡。
+我們從 INSERT 開始，也就是把新的資料放進資料表。
 -->
 
 ---
@@ -148,13 +140,15 @@ VALUES
 </div>
 
 <!--
-INSERT 的語法建議永遠明確指定欄位名稱。
+這頁是 INSERT 的三種寫法。
 
-為什麼？想像你的表今天有 5 個欄位，你用省略欄位名稱的方式寫了 INSERT。三個月後，DBA 在第 3 個欄位和第 4 個欄位之間新增了一個欄位，你的 INSERT 語句就會把值插入錯誤的欄位，甚至報錯。
+第一種是推薦的寫法，在表名後面明確列出欄位名稱，再用 `VALUES` 給對應的值。
 
-如果你有明確指定欄位名稱，新增欄位不會影響現有的 INSERT 語句。
+第二種省略了欄位名稱，雖然比較短，但不推薦。想像這張表現在有五個欄位，三個月後有人在中間插了一個新欄位，這行 INSERT 的值就會塞進錯的欄位，甚至直接報錯。明確寫出欄位名稱，就不會受到影響。
 
-批次插入的效能優勢：每次 INSERT 都有網路往返時間和事務開銷。1000 次單筆 INSERT 有 1000 次往返；批次 INSERT 只有 1 次往返。
+第三種是批次新增，一個 INSERT 後面接好幾組值，用逗號隔開。
+
+批次的效能好很多。每次 INSERT 都要跟資料庫來回一趟，新增一千筆資料，單筆寫法要來回一千次，批次寫法只要一次。
 -->
 
 ---
@@ -179,14 +173,13 @@ VALUES
 執行後，`id` 欄位由 AUTO_INCREMENT 自動填入，`updated_at` 由 DEFAULT CURRENT_TIMESTAMP 自動填入。
 
 <!--
-看這個範例，我們只提供了 name、category、price、stock（和 is_active），沒有提供 id 和 updated_at。
+我們實際在商品表裡新增資料。
 
-id 是 AUTO_INCREMENT，MySQL 會自動給下一個可用的整數（例如 1、2、3...）。
-updated_at 有 DEFAULT CURRENT_TIMESTAMP，MySQL 會自動填入目前時間。
+第一段新增一支 iPhone 15，只給了名稱、分類、價格和庫存。第二段用批次寫法，一次新增三樣商品。
 
-is_active 有 DEFAULT 1，所以第一個 INSERT 省略了 is_active，MySQL 會自動填入 1（上架狀態）。
+大家注意，我們都沒有提供 `id` 和 `updated_at`。執行後，`id` 會由 AUTO_INCREMENT 自動編號，`updated_at` 會自動填入目前時間。第一段也沒給 `is_active`，它的預設值是 1，所以商品會是上架狀態。
 
-⚠️ 批次插入時，如果其中一筆資料違反約束（例如 UNIQUE 衝突），整個 INSERT 語句都會失敗，一筆都不會插入。如果需要「成功幾筆算幾筆」的行為，可以使用 INSERT IGNORE。
+這裡要提醒一點，批次新增時，只要其中一筆違反約束，例如 UNIQUE 重複，整個 INSERT 就會失敗，一筆都不會寫入。如果希望重複的跳過、其他照樣寫入，可以用 INSERT IGNORE，這個我們在最後一部分會講。
 -->
 
 ---
@@ -212,13 +205,17 @@ DELETE FROM products
 ```
 
 <!--
-INSERT ... SELECT 是一個很實用的語法，讓我們能夠根據查詢條件，把資料從一張表複製到另一張表。
+「INSERT ... SELECT 讓我們把一個 SELECT 的結果直接插入到另一張表。」
 
-在這個例子中，我們把下架超過一年的商品備份到 products_archive，然後從原表刪除，達到「歸檔」的效果。
+這段範例要做的是資料歸檔，把下架超過一年的商品，搬到另一張備份表。
 
-CREATE TABLE ... LIKE 建立一張和 products 結構完全相同的空表，包含所有欄位定義和約束，但沒有資料。
+第一步 `CREATE TABLE products_archive LIKE products`，會建立一張結構跟商品表一模一樣的空表。
 
-⚠️ 在生產環境執行這樣的操作時，建議先在 Transaction 裡做，確認備份成功後再 COMMIT 刪除操作。
+第二步是關鍵。INSERT 後面不是接 VALUES，而是直接接一個 SELECT，篩出下架而且超過一年沒更新的商品，把結果整批寫進備份表。
+
+第三步再用同樣的條件，把原表裡這些商品刪掉。執行完，舊商品就從原表搬到了備份表。
+
+不過要注意，如果備份那步失敗了，刪除卻照樣執行，資料就不見了。所以這類操作最好用交易包起來，這個我們等一下就會學到。
 -->
 
 ---
@@ -230,11 +227,7 @@ class: flex flex-col justify-center items-center text-center
 # UPDATE — 修改資料
 
 <!--
-進入第二部分：UPDATE。
-
-UPDATE 是修改現有資料的語法。它也是最容易犯「災難性錯誤」的語法——一個不小心忘記加 WHERE，可能修改整張表的所有資料。
-
-我們要特別學習怎麼安全地使用 UPDATE。
+接下來是 UPDATE。它也是最容易出大事的語法，忘了加 WHERE，整張表都會被改掉。
 -->
 
 ---
@@ -256,15 +249,13 @@ SET
 </div>
 
 <!--
-UPDATE 語法本身不複雜，但「沒有 WHERE」是一個非常危險的陷阱。
+這是 UPDATE 的語法結構。先寫表名，`SET` 後面列出要改哪些欄位、改成什麼值，最後用 `WHERE` 指定要改哪幾筆。
 
-想像一下：你想更新某個商品的價格，但忘記加 WHERE id = 123，就變成了把所有商品的價格都改成新的值。這在生產環境是非常嚴重的事故。
+語法裡 WHERE 被放在方括號裡，代表它是選用的。可是實務上，它幾乎永遠都要加。
 
-ORDER BY 和 LIMIT 在 UPDATE 中也是可選的：
-UPDATE products SET price = price * 0.9 ORDER BY stock DESC LIMIT 10
-這會對庫存最多的前 10 個商品打九折。
+想像我們只想改一個商品的價格，卻忘了寫 WHERE id 等於 123，結果就會把所有商品的價格都改成同一個數字。在正式環境，這是非常嚴重的事故。
 
-但這種用法不太常見，大多數情況下 UPDATE 只需要 SET 和 WHERE。
+後面的 ORDER BY 和 LIMIT 也是選用的，例如只對庫存最多的前十個商品打折。不過這種用法比較少見，大多數情況，UPDATE 只需要 SET 和 WHERE。
 -->
 
 ---
@@ -291,15 +282,15 @@ WHERE category = '電腦' AND is_active = 1;
 ```
 
 <!--
-看這三個範例，涵蓋了 UPDATE 最常用的三種情境。
+這頁有三個最常見的 UPDATE 情境。
 
-第一個：用 WHERE id = 1 精確定位要修改的那一筆，只修改 price。主鍵是最安全的 WHERE 條件。
+第一個用 `WHERE id = 1` 精準鎖定一筆，只改價格。用主鍵當條件是最安全的，因為一定只會影響一筆。
 
-第二個：同時修改多個欄位，用逗號分隔。注意：最後一個 SET 項目後面沒有逗號。
+第二個是一次改多個欄位，價格和上架狀態用逗號隔開。執行後，這個商品會被改價，同時下架。
 
-第三個：用計算式修改，price * 0.9 代表九折。這種批次修改要特別小心 WHERE 條件是否正確。
+第三個是用計算式修改，`price = price * 0.9`，意思是把原本的價格乘以零點九，也就是打九折。這裡的條件是電腦類而且上架中的商品。
 
-⚠️ 執行批次 UPDATE 前，先用相同的 WHERE 條件做 SELECT，確認影響的範圍是你預期的，再執行 UPDATE。例如：SELECT * FROM products WHERE category = '電腦' AND is_active = 1 看看有幾筆，確認無誤後再執行 UPDATE。
+像第三個這種一次改很多筆的 UPDATE，WHERE 條件一寫錯，影響範圍就很大。所以下一頁，我們來看一個安全執行 UPDATE 的習慣。
 -->
 
 ---
@@ -330,20 +321,17 @@ WHERE category = '電腦' AND is_active = 1;
 </div>
 
 <!--
-這個「三步驟法」是我在工作中養成的習慣，建議大家也這樣做：
+這是一個很實用的三步驟習慣。
 
-步驟一：把 UPDATE 的 WHERE 條件複製到 SELECT，確認影響的資料是你預期的。
-步驟二：執行 UPDATE。
-步驟三：再次 SELECT，確認資料已經正確修改。
+第一步，把 UPDATE 的 WHERE 條件原封不動複製到 SELECT，先看看會影響哪些資料，數量對不對。
 
-在生產環境，可以更進一步：把 UPDATE 放在 Transaction 裡：
+第二步，確認沒問題，才執行 UPDATE。
 
-START TRANSACTION;
-UPDATE products SET price = price * 0.9 WHERE category = '電腦';
-SELECT * FROM products WHERE category = '電腦';  -- 確認結果
-COMMIT;  -- 確認無誤後提交；或 ROLLBACK 取消
+第三步，再 SELECT 一次，確認資料真的改成我們預期的樣子。
 
-如果 SELECT 確認後發現修改有問題，可以 ROLLBACK 取消整個操作。這是 DML 比 DDL 安全的地方——DML 支援 Transaction，DDL 不行。
+在正式環境，還可以更進一步，把 UPDATE 放進交易裡。先 `START TRANSACTION`，執行 UPDATE，查一下結果。沒問題就 `COMMIT` 提交，發現不對就 `ROLLBACK`，整個修改都會取消。
+
+這也是 DML 比 DDL 安全的地方。上一章說過，DDL 執行就確定了，但 DML 可以放在交易裡，還有反悔的機會。
 -->
 
 ---
@@ -355,9 +343,7 @@ class: flex flex-col justify-center items-center text-center
 # DELETE — 刪除資料
 
 <!--
-進入第三部分：DELETE。
-
-DELETE 和 UPDATE 一樣危險——沒有 WHERE 會刪掉整張表的所有資料。我們同樣需要學習安全使用的方法。
+接下來是 DELETE。它跟 UPDATE 一樣危險，沒有 WHERE，整張表的資料都會被刪光。
 -->
 
 ---
@@ -376,17 +362,13 @@ DELETE FROM table_name
 </div>
 
 <!--
-DELETE 是 SQL 中最危險的操作之一。
+DELETE 的語法很短，`DELETE FROM` 加上表名，後面接 WHERE，也可以搭配 ORDER BY 和 LIMIT。
 
-"DELETE FROM products;" 這五個字，如果在生產環境誤執行，會立刻刪掉所有商品資料。而且 DELETE 雖然可以放在 Transaction 裡 ROLLBACK，但很多時候在你意識到出錯之前，操作就已經 COMMIT 了。
+正因為它很短，才特別危險。只寫 `DELETE FROM products` 就按下執行，所有商品資料會立刻消失。雖然 DELETE 可以放在交易裡反悔，但很多時候，等我們發現出錯，修改早就提交了。
 
-因此：
-1. 永遠加 WHERE 條件
-2. 執行前先 SELECT 確認
-3. 放在 Transaction 裡
-4. 重要資料先備份
+所以有四個習慣一定要養成。第一，永遠加上 WHERE。第二，執行前先用 SELECT 確認範圍。第三，重要的操作放在交易裡。第四，重要的資料先備份。
 
-這些不是多餘的步驟，都是真實事故中學到的血淚教訓。
+這些不是多餘的步驟，而是很多真實事故換來的教訓。
 -->
 
 ---
@@ -414,13 +396,15 @@ LIMIT 100;
 </div>
 
 <!--
-第一個範例是最安全的：用 WHERE id = 10 精確定位，確保只刪一筆。
+這頁有三種常見的 DELETE 寫法。
 
-第二個是批次刪除：刪除下架且超過一年沒更新的商品。注意兩個條件都要同時成立（AND）。
+第一個用 `WHERE id = 10` 精準刪除一筆，這是最安全的寫法。
 
-第三個是「分批刪除」的做法：LIMIT 100 確保這次最多只刪 100 筆。如果要刪除的資料很多，可以用這個方式重複執行，避免一次刪太多導致鎖表時間過長，影響其他查詢。
+第二個是批次刪除，條件是下架中、而且在 2023 年之前就沒再更新過的商品，兩個條件用 AND 連起來，必須同時成立。
 
-分批刪除的 LIMIT 和 ORDER BY 通常搭配使用：ORDER BY updated_at ASC 確保每次都刪除最舊的那批資料。
+第三個是分批刪除。`LIMIT 100` 讓這次最多只刪一百筆，搭配 `ORDER BY updated_at ASC`，每次都先刪最舊的那一批。
+
+為什麼要分批呢？一次刪除幾十萬筆資料，會把表鎖住很久，其他查詢都得排隊等。分批執行，每次只鎖一下下，對線上系統的影響就小很多。
 -->
 
 ---
@@ -448,17 +432,15 @@ COMMIT;
 ```
 
 <!--
-Transaction 是 DML 操作的安全網。
+前面一直提到交易，這頁我們正式來看。「Transaction 讓多個 DML 操作成為一個原子單位，要麼全部成功，要麼全部失敗。」
 
-ACID 原則（Atomicity、Consistency、Isolation、Durability）是資料庫事務的核心。其中 Atomicity（原子性）確保了：如果事務中有任何操作失敗，整個事務都會回滾，不會出現「備份成功但原資料沒有刪除」或「原資料刪除了但備份失敗」的半完成狀態。
+就像去銀行轉帳，從 A 帳戶扣錢、在 B 帳戶加錢，這兩件事一定要一起完成。只做一半，錢就憑空消失了。
 
-在這個範例中：
-1. 先把資料備份到 products_archive
-2. 再刪除原資料
-3. 如果兩個操作都成功，COMMIT 讓修改永久生效
-4. 如果任何一步失敗（或你發現結果不對），ROLLBACK 讓所有操作都取消
+這段範例先用 `START TRANSACTION` 開始交易，接著把資料備份到 `products_archive`，再刪除原資料。兩步都成功，就用 `COMMIT` 讓修改正式生效。如果中間發現問題，就 `ROLLBACK`，所有操作都會取消。
 
-⚠️ 注意：DDL 語句（CREATE、ALTER、DROP）會隱式提交當前事務，不能被 ROLLBACK。Transaction 只對 DML 有效。
+這樣就不會出現備份失敗、資料卻已經刪掉的半完成狀態。
+
+另外要提醒，CREATE、ALTER、DROP 這些 DDL 會自動提交目前的交易，所以交易只保護得了 DML。
 -->
 
 ---
@@ -470,9 +452,7 @@ class: flex flex-col justify-center items-center text-center
 # 進階 INSERT 技巧
 
 <!--
-最後一個部分，我們學一個非常實用的進階語法：INSERT ... ON DUPLICATE KEY UPDATE。
-
-這個語法解決了「存在就更新，不存在就新增」的常見需求。
+最後一部分，我們學兩個進階的新增技巧，處理資料已經存在時該怎麼辦。
 -->
 
 ---
@@ -498,11 +478,13 @@ VALUES
 </div>
 
 <!--
-INSERT IGNORE 讓你在批次插入時，遇到重複（違反 UNIQUE 約束）的資料就靜默跳過，不報錯，繼續插入下一筆。
+「INSERT IGNORE 讓重複插入的資料靜默失敗，不報錯。」
 
-這在資料匯入場景很常用：例如你每天從外部系統同步商品資料，有些商品已經存在，有些是新的。用 INSERT IGNORE 可以讓新商品順利插入，已存在的商品靜默跳過。
+這個範例假設商品表的 `sku` 有 UNIQUE 約束。第一段是一般的 INSERT，如果 sku 已經存在，就會直接報錯。第二段加了 `IGNORE`，重複的那一筆會被跳過，其他資料繼續寫入。所以執行後，如果 iPhone 15 已經存在，只有 iPhone 15 Pro 會被新增。
 
-但要注意：INSERT IGNORE 不只忽略 DUPLICATE 錯誤，它會忽略所有錯誤（包括資料類型不符、NOT NULL 欄位為空等）。這有時會讓你遺漏重要的錯誤。在需要嚴格驗證的場景，要謹慎使用。
+這在資料匯入時很好用。例如每天從外部系統同步商品，有些是新的，有些早就存在，用 INSERT IGNORE 就能只寫入新商品。
+
+不過要小心，它不只忽略重複，連其他錯誤也會一起忽略，例如資料型別不對。重要錯誤可能就這樣被藏起來，所以需要嚴格驗證的場合要謹慎使用。
 -->
 
 ---
@@ -528,15 +510,15 @@ ON DUPLICATE KEY UPDATE
 </div>
 
 <!--
-ON DUPLICATE KEY UPDATE 是 MySQL 特有的語法，解決了「Upsert」（insert or update）的需求。
+「存在就更新，不存在就新增」，這個需求非常常見，通常叫做 UPSERT。
 
-常見的應用場景：庫存系統的補貨操作。每次進貨時，如果商品已存在就加庫存，如果是新商品就新增。
+以補貨為例。進貨時，如果這個商品已經在表裡，就把庫存加上去；如果是新商品，就直接新增。
 
-VALUES(stock) 在 ON DUPLICATE KEY UPDATE 中代表「你試圖插入的那個值」，也就是 10。所以 stock = stock + VALUES(stock) 的意思是：原本的庫存加上新進貨的 10 個。
+這段 SQL 前半段是普通的 INSERT。關鍵在後面的 `ON DUPLICATE KEY UPDATE`，當主鍵或 UNIQUE 欄位發生衝突時，它就改成執行後面的更新。`VALUES(stock)` 代表這次想寫入的值，也就是 10。
 
-⚠️ MySQL 8.0.20 之後，VALUES() 函式在 ON DUPLICATE KEY UPDATE 中已被標記為廢棄（deprecated），建議改用別名：
-INSERT INTO ... VALUES (...) AS new ON DUPLICATE KEY UPDATE stock = stock + new.stock;
-這是 MySQL 8.x 的新寫法，更清晰也更符合標準。
+所以執行後，如果 IPH15 不存在，就新增一筆，庫存是 10。如果已經存在，庫存就在原本的數量上再加 10，價格也更新成新的。
+
+另外，MySQL 8.0.20 之後，`VALUES()` 這種寫法已經不建議使用，新的寫法是幫新資料取一個別名，再用別名來引用。
 -->
 
 ---
@@ -558,17 +540,11 @@ INSERT INTO ... VALUES (...) AS new ON DUPLICATE KEY UPDATE stock = stock + new.
 </div>
 
 <!--
-學完這章，大家已經能夠對資料庫的資料進行完整的 CRUD 操作了。
+我們整理這一章。INSERT 建議明確寫出欄位，批次新增效能更好，搭配 SELECT 還能整批複製。UPDATE 和 DELETE 一定要加 WHERE，大量刪除要分批。交易保護重要操作。INSERT IGNORE 會跳過重複，ON DUPLICATE KEY UPDATE 則是存在就更新。
 
-最重要的安全習慣：
-1. UPDATE 和 DELETE 必須加 WHERE（幾乎沒有例外）
-2. 執行前先 SELECT 確認影響範圍
-3. 重要操作放在 Transaction 裡
-4. 大量操作分批進行，避免鎖表
+這章最重要的，是畫面下方那條安全原則：UPDATE 和 DELETE 之前，先用相同的 WHERE 條件 SELECT 一次。
 
-這些習慣不是過度謹慎，而是在真實事故中學到的教訓。養成這些習慣，能保護你和你的資料庫。
-
-做兩道練習，把今天的內容鞏固一下！
+接下來，我們用兩題練習把這些操作練熟。
 -->
 
 ---
@@ -598,11 +574,15 @@ CREATE TABLE students (
 4. 查詢目前仍在學（is_active=1）且 score >= 80 的學生，按 score 降冪排列
 
 <!--
-這題綜合了這一章和前一章的所有內容：INSERT（批次）、UPDATE（帶 WHERE）、DELETE（帶安全確認）、SELECT（帶 WHERE 和 ORDER BY）。
+第一題是完整的增刪改查練習，使用畫面上這張 `students` 學生表。
 
-提示三：刪除前先用 SELECT email FROM students WHERE email = 'test@example.com' 確認這個 email 存在。
+任務有四個。先一次新增三位學生，再把分數低於六十分的學生設為非在學。接著刪除 email 是 `test@example.com` 的學生，記得先確認再刪除。最後查出還在學、而且分數八十分以上的學生，依分數由高到低排列。
 
-提示四：這道 SELECT 結合了前一章學的 WHERE 多條件篩選和 ORDER BY。
+這題結合了這一章的新增、修改、刪除，以及上一章的查詢。
+
+我們先暫停一下，動手寫寫看。
+
+【講師】給大家十分鐘，可以提醒第三題要先 SELECT 再 DELETE。
 -->
 
 ---
@@ -636,15 +616,15 @@ ORDER BY score DESC;
 ```
 
 <!--
-解答分析：
+我們來看解答。
 
-第一題：批次 INSERT，同時插入三筆。注意每組值用括號包住，組之間用逗號分隔。
+第一題是批次 INSERT，每一組值用括號包起來，組跟組之間用逗號隔開。`is_active` 和 `created_at` 都有預設值，所以不用給。
 
-第二題：UPDATE 加了兩個 WHERE 條件：score < 60 AND is_active = 1。為什麼要加 is_active = 1？因為我們不想重複修改已經是 0 的資料（雖然重複修改不會有錯，但有這個條件讓邏輯更清晰）。
+第二題的 UPDATE 用了兩個條件，分數低於六十，而且目前還在學。後面那個條件其實不加也不會錯，但加上之後，只會改到真正需要改的資料，意思也更清楚。
 
-第三題：先 SELECT 確認，看到結果後再 DELETE。這是安全習慣。
+第三題先用 SELECT 確認這位學生真的存在，看到結果後才 DELETE，這就是我們的安全習慣。
 
-第四題：兩個 WHERE 條件用 AND 連接，ORDER BY score DESC 讓高分的排在前面。
+第四題是上一章的技巧，兩個條件用 AND 連接，再用 `ORDER BY score DESC` 讓高分的排在前面。執行後就是一份高分在學學生的名單。
 -->
 
 ---
@@ -666,11 +646,15 @@ layout: default
 3. 從備份表恢復原始價格的 SQL（提示：用 UPDATE JOIN）
 
 <!--
-這題考驗大家的 Transaction 使用和 INSERT ... SELECT 的應用。
+第二題來模擬一個年終折扣活動。價格超過一萬的商品打八折，配件類商品打七折，活動結束後還要把價格恢復原狀。
 
-提示：UPDATE products p JOIN products_backup b ON p.id = b.id SET p.price = b.price；這是 UPDATE JOIN 語法，從另一張表取值來更新。
+任務有三步。先把商品表完整備份到 `products_backup`。再用交易包住兩個打折的 UPDATE。最後用 UPDATE 搭配 JOIN，從備份表恢復價格。
 
-思考：如果兩個 UPDATE 語句都放在同一個 Transaction 裡，有什麼好處？
+思考一下，兩個 UPDATE 放在同一個交易裡，有什麼好處？
+
+我們先暫停一下，自己寫寫看。
+
+【講師】給大家十分鐘，UPDATE JOIN 的語法可以先在白板上寫出來給大家參考。
 -->
 
 ---
@@ -707,15 +691,15 @@ SET p.price = b.price;
 ```
 
 <!--
-解答分析：
+我們來看解答。
 
-步驟一：CREATE TABLE ... LIKE 建立結構相同的空表，INSERT ... SELECT 把現有資料全部複製過去。
+第一步用 `CREATE TABLE ... LIKE` 建立一張結構相同的空表，再用 `INSERT ... SELECT` 把資料全部複製過去。
 
-步驟二：兩個 UPDATE 放在同一個 Transaction 裡。這確保了：如果第二個 UPDATE 失敗，第一個 UPDATE 也會回滾，不會出現「部分商品打了折扣、部分沒有」的不一致狀態。
+第二步把兩個 UPDATE 放進同一個交易。這就回答了剛才的思考題，如果第二個 UPDATE 失敗，第一個也會一起回復，不會出現有些商品打了折、有些沒有的狀況。中間的 SELECT 讓我們確認結果，沒問題才 COMMIT。
 
-步驟三：UPDATE JOIN 語法是 MySQL 特有的（標準 SQL 不支援）。它讓我們能夠用一個 SELECT 的結果來更新另一張表。這裡用備份表的原始 price 更新現有表的 price。
+第三步是 UPDATE JOIN。用商品編號把兩張表對起來，再把備份表裡的原價寫回商品表。執行後，所有商品的價格都會回到活動前。
 
-⚠️ 在刪除備份表之前，確認恢復操作已經成功。備份表在確認無誤後再 DROP TABLE products_backup。
+最後提醒，要確認價格真的恢復了，再把備份表刪掉。
 -->
 
 ---
@@ -727,15 +711,11 @@ layout: end
 有任何問題嗎？
 
 <!--
-現在開放 Q&A 時間。
+今天我們學會了用 INSERT、UPDATE、DELETE 操作資料，也學了交易和兩種處理重複資料的寫法。
 
-大家對 DML 有沒有什麼疑問？
+最重要的是安全習慣：UPDATE 和 DELETE 一定加 WHERE，執行前先 SELECT 確認，重要操作放進交易，大量修改分批進行。
 
-特別提醒幾個最重要的安全習慣：
-1. UPDATE 和 DELETE 一定要加 WHERE
-2. 執行前先 SELECT 確認範圍
-3. 重要操作放在 Transaction 裡
-4. 大量修改分批執行
+到這裡，增刪改查四種基本操作都學完了。下一章，我們要學 JOIN，把分散在不同資料表的資料合在一起查。我們下一章見。
 
-這六章——設計原則、正規化、關聯設計、DDL、DQL、DML——構成了 MySQL 最重要的基礎知識。恭喜大家完成了這個系列的基礎課程！
+【講師】開放提問，可以請同學分享自己會怎麼避免誤刪資料。
 -->

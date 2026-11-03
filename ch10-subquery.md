@@ -46,13 +46,11 @@ style: |
 </div>
 
 <!--
-大家好，歡迎來到第十章——子查詢與進階查詢！
+大家好，歡迎來到第十章：子查詢與進階查詢。
 
-前幾章我們學了 SELECT、JOIN、GROUP BY 等基礎查詢。但有時候，你想回答的問題用一個 SELECT 搞不定。
+前幾章學的 SELECT、JOIN、GROUP BY，已經能回答很多問題。可是有些問題，一個 SELECT 搞不定。例如「找出金額高於平均值的訂單」，我們得先算出平均，再拿它來篩選。
 
-例如：「找出訂單金額高於平均值的顧客」——你需要先算出平均值，再拿這個平均值來篩選。這就需要用到子查詢（Subquery）。
-
-這章我們會學子查詢的各種用法，包括 IN、LIKE 進階用法、EXISTS，以及相關子查詢（Correlated Subquery）。學完後，你能解決更複雜的業務查詢需求。
+這就是子查詢要解決的事。這一章會學子查詢的各種用法，包括 IN、EXISTS，以及相關子查詢。學完之後，更複雜的業務問題也能用一個查詢解決。
 -->
 
 ---
@@ -69,13 +67,7 @@ layout: default
 - **子查詢 vs JOIN** — 效能比較與選擇原則
 
 <!--
-這章有六個部分，每部分聚焦一個概念。
-
-LIKE 雖然在 DQL 章節提過，但這裡會深入說萬用字元的細節和效能問題。
-
-IN 和 EXISTS 是最常用的兩種子查詢形式，我們會仔細比較它們的差別和使用場景。
-
-最後說子查詢 vs JOIN 的效能比較，這是實際工作中很常見的選擇問題。
+這一章分成六段。先認識什麼是子查詢，接著深入 LIKE 的萬用字元。然後是兩種最常用的子查詢形式，IN 和 EXISTS，特別是 NOT IN 藏著的 NULL 陷阱。最後看子查詢可以放在哪些位置，以及它和 JOIN 該怎麼選。
 -->
 
 ---
@@ -109,14 +101,11 @@ CREATE TABLE products (
 ```
 
 <!--
-這三張表就是本章所有範例的基礎：customers（顧客）、orders（訂單）、products（商品）。
+這一章用的是電商訂單系統，有三張表：顧客 `customers`、訂單 `orders`、商品 `products`。
 
-資料的設計：
-- 一個顧客可以有多筆訂單（一對多）
-- 訂單有狀態（pending、completed、cancelled）
-- 商品有類別和價格
+一個顧客可以有很多筆訂單，訂單用 `customer_id` 指向顧客。訂單有狀態欄位 `status`，預設是 pending，另外還有 completed 和 cancelled。商品則有分類和價格。
 
-這樣的電商系統非常貼近真實場景，讓大家在學習語法的同時，也能感受到實際的業務應用。
+接下來的範例都在這三張表上示範，大家可以先記住這幾個欄位。
 -->
 
 ---
@@ -128,7 +117,7 @@ class: flex flex-col justify-center items-center text-center
 # 什麼是子查詢？
 
 <!--
-進入第一部分，先說清楚什麼是子查詢，以及它適合解決什麼樣的問題。
+我們先搞清楚子查詢是什麼，以及它適合解決什麼樣的問題。
 -->
 
 ---
@@ -155,13 +144,13 @@ WHERE amount > (SELECT AVG(amount) FROM orders);
 ```
 
 <!--
-子查詢解決的問題很直觀：「我需要先得到某個計算結果，再把這個結果用在查詢條件裡。」
+「子查詢是寫在另一個 SQL 語句內部的 SELECT 語句，用括號包住，用來提供外層查詢所需的值或條件。」
 
-沒有子查詢時，你要分兩步走：先查出平均值，再手動把數字帶入另一個查詢。這不只麻煩，而且如果資料更新了，你的手動帶入的值就過時了。
+先看沒有子查詢的做法，要分兩步。第一步查出平均金額，假設是一千五。第二步再把一千五手動填進另一個查詢。這不只麻煩，資料一更新，手動填的數字就過時了。
 
-有了子查詢，MySQL 會自動先執行括號裡的子查詢，得到結果，再把這個結果用在外層的 WHERE 條件。
+有了子查詢，只要一步。把算平均的 SELECT 用括號包起來，直接放進 WHERE。MySQL 會先執行括號裡的子查詢，得到平均值，再拿這個值來篩選外層的訂單。
 
-這讓你的 SQL 可以「動態地」根據當前資料做計算，而不是把計算結果寫死在 SQL 裡。
+執行後，會列出所有高於平均金額的訂單，而且平均值永遠是根據當下的資料計算的。
 -->
 
 ---
@@ -181,15 +170,13 @@ WHERE amount > (SELECT AVG(amount) FROM orders);
 </div>
 
 <!--
-子查詢按照它回傳什麼資料形式來分類。
+子查詢依照回傳的資料形式，分成三種。
 
-純量子查詢回傳的是一個數字或一個字串——例如 AVG(amount) 的結果是一個數字。你可以用 = 或 > 來比較一個欄位和這個純量。
+純量子查詢只回傳一個值，例如平均金額，可以直接用等於、大於這些比較運算子。列子查詢回傳一列多欄，比較少用。表子查詢回傳多列的結果集，例如所有下過訂單的顧客編號。
 
-表子查詢回傳的是一個「結果集」，有多列多欄。你不能直接用 > 比較一個欄位和一個結果集，而是要用 IN（「是否在這個集合裡」）或 EXISTS（「這個集合是否不為空」）。
+結果集不能直接拿來比大小，要用 IN 判斷「在不在這個集合裡」，或用 EXISTS 判斷「這個集合是不是空的」。
 
-舉例說明：
-- 「找出訂單金額高於平均值的訂單」→ 純量子查詢（AVG 回傳一個值）
-- 「找出下過 completed 訂單的顧客」→ 表子查詢（子查詢回傳多個 customer_id）
+所以最常用的組合是兩種：純量子查詢搭配比較運算子，表子查詢搭配 IN 或 EXISTS。
 -->
 
 ---
@@ -201,9 +188,7 @@ class: flex flex-col justify-center items-center text-center
 # LIKE 進階用法
 
 <!--
-進入第二部分：LIKE 的進階用法。
-
-LIKE 在 DQL 章節介紹過基礎用法，這裡我們深入說萬用字元的細節，以及一些常見的效能陷阱。
+接下來深入 LIKE。第五章已經學過基礎，這裡補上萬用字元的細節和效能陷阱。
 -->
 
 ---
@@ -225,18 +210,13 @@ LIKE 在 DQL 章節介紹過基礎用法，這裡我們深入說萬用字元的�
 </div>
 
 <!--
-LIKE 的萬用字元很直觀，但有一個效能問題要特別注意。
+「LIKE 是模糊比對運算子，百分比代表任意長度的任意字元，底線代表恰好一個任意字元。」
 
-% 和 _ 的差別：
-- % 可以匹配零個或多個任意字元：'A%' 可以匹配 'A', 'AB', 'ABC'...
-- _ 只能匹配恰好一個字元：'A_' 只能匹配 'AB', 'AC', 'A1'... 不能匹配 'A' 或 'ABC'
+表格列出了常見的模式。`'iPhone%'` 是以 iPhone 開頭，`'%手機%'` 是包含手機，`'%Pro'` 是以 Pro 結尾。底線比較嚴格，`'___'` 三個底線，就是剛好三個字元。
 
-效能問題：
-'iPhone%'（前綴搜尋）可以使用 B-Tree 索引，因為索引是按字首排序的，MySQL 能快速定位到 'iPhone' 開頭的資料。
+這裡最重要的是效能。以百分比開頭的模式用不到 B-Tree 索引。索引是依字首排序的，開頭不確定，MySQL 就不知道從哪裡找，只能全表掃描。
 
-'%iPhone%'（中間或後綴搜尋）無法使用索引，因為 MySQL 不知道從哪裡開始找。它只能掃描整張表的每一列，逐一比較。
-
-如果你的應用需要大量的中間/後綴搜尋，考慮使用 FULLTEXT 索引或 Elasticsearch。
+如果應用需要大量的包含搜尋，可以考慮 FULLTEXT 索引，或是 Elasticsearch 這類搜尋引擎。
 -->
 
 ---
@@ -265,17 +245,15 @@ WHERE description LIKE '50\% off' ESCAPE '\';
 ```
 
 <!--
-這四個範例涵蓋了 LIKE 最常用的模式。
+這頁有四種常見的 LIKE 寫法。
 
-前綴搜尋 'iPhone%' 是效能最好的寫法，應盡量使用。
+第一個是前綴搜尋，用得到索引，效能最好。第二個是包含搜尋，資料少時還可以接受，資料到了幾百萬筆就會很慢。
 
-'%Pro%' 的關鍵字搜尋雖然效能差，但在資料量不大的表上仍然可以接受。問題是當資料量增長到幾百萬筆時，這個查詢會變得非常慢。
+第三個是 `NOT LIKE`，排除名稱裡有二手的商品，再搭配分類是手機的條件，執行後會得到所有非二手的手機。
 
-NOT LIKE 搭配 AND 可以做複合條件篩選——這裡同時篩選「不是二手商品」且「類別是手機」。
+第四個是 `ESCAPE`。如果要搜尋的文字本身就有百分比符號，例如五十趴 off，就要用 ESCAPE 指定跳脫字元，讓 LIKE 把百分比當成普通字元。
 
-ESCAPE 是個比較少見但重要的語法：如果你要搜尋的字串本身包含 % 或 _ 這些萬用字元，就需要用 ESCAPE 指定一個轉義字符，讓 LIKE 把 % 當成普通字符而不是萬用字元。
-
-⚠️ 要注意大小寫：MySQL 的 LIKE 在 utf8mb4_general_ci 等 case-insensitive 校對規則下不區分大小寫。如果需要區分，要用 LIKE BINARY 或切換到 case-sensitive 的校對規則。
+另外提醒，在不分大小寫的排序規則下，LIKE 也不分大小寫。需要區分的話，可以用 `LIKE BINARY`。
 -->
 
 ---
@@ -287,9 +265,7 @@ class: flex flex-col justify-center items-center text-center
 # IN / NOT IN 與子查詢
 
 <!--
-進入第三部分：IN 和 NOT IN 搭配子查詢的用法。
-
-IN 是最常見的子查詢形式，讓我們先複習 IN 的基本用法，再說搭配子查詢的進階應用。
+接下來是 IN 和 NOT IN。我們先複習基本用法，再看搭配子查詢的寫法。
 -->
 
 ---
@@ -318,18 +294,13 @@ WHERE category NOT IN ('配件', '二手');
 </div>
 
 <!--
-IN 的基本用法大家在 DQL 章節已經學過了，這裡快速複習一下。
+「IN 判斷一個欄位的值是否在指定的清單中。」
 
-IN ('A', 'B', 'C') 等同於 = 'A' OR = 'B' OR = 'C'，但更簡潔。
+第一段篩選分類是手機、平板或電腦的商品，效果等同於三個 OR，但簡潔多了。第二段的 `NOT IN` 反過來，排除配件和二手。選項一多，IN 比一串 OR 好讀很多。
 
-NOT IN 是 IN 的反向：「排除清單裡的所有值」。
+這裡要先埋一個伏筆。如果 NOT IN 的清單裡出現 NULL，結果會出乎意料。因為跟 NULL 比較的結果既不是真也不是假，整個條件就成立不了，查詢一筆資料都不會回傳。
 
-一個重要的陷阱：NOT IN 和 NULL 的相互作用。
-如果 IN 的清單裡包含 NULL，NOT IN 的結果可能讓你意外。例如：
-WHERE category NOT IN ('手機', NULL)
-這個查詢不會回傳任何結果！因為 MySQL 用 AND NOT (category = '手機' OR category = NULL) 來計算，而 category = NULL 永遠是 NULL（不是 TRUE 也不是 FALSE），導致整個條件無法成立。
-
-這是後面我們說「NOT IN 和 NOT EXISTS 的差別」的重要背景知識。
+這個陷阱，等一下搭配子查詢時會看得更清楚。
 -->
 
 ---
@@ -354,17 +325,13 @@ WHERE id IN (
 子查詢先執行，回傳所有 `completed` 訂單的 `customer_id` 清單，然後外層的 `WHERE id IN (...)` 篩選出這些顧客。
 
 <!--
-這是 IN 搭配子查詢最典型的用法。
+「IN 的清單不只可以是靜態值，也可以是子查詢的結果。」
 
-執行邏輯：
-1. MySQL 先執行括號裡的子查詢：SELECT customer_id FROM orders WHERE status = 'completed'
-2. 得到一個 customer_id 的清單，例如 (1, 3, 5, 7)
-3. 然後執行外層查詢：SELECT ... FROM customers WHERE id IN (1, 3, 5, 7)
+這段查詢要找出下過完成訂單的顧客。執行順序是這樣的。MySQL 先執行括號裡的子查詢，從訂單表取出所有完成訂單的 `customer_id`，得到一份清單，例如一、三、五號。接著外層查詢再從顧客表裡，挑出 id 在這份清單裡的顧客。
 
-這個查詢等同於用 JOIN 實現：
-SELECT DISTINCT c.id, c.name FROM customers c INNER JOIN orders o ON c.id = o.customer_id WHERE o.status = 'completed'
+執行後，就得到所有下過完成訂單的顧客名單。
 
-兩種寫法效果相同，我們後面會比較它們的效能。
+這個查詢也能用 INNER JOIN 寫，效果一樣，不過 JOIN 要多加 DISTINCT 去除重複。兩種寫法的效能比較，我們在最後一段會談。
 -->
 
 ---
@@ -389,21 +356,15 @@ WHERE id NOT IN (
 </div>
 
 <!--
-NOT IN 搭配子查詢是一個常見的寫法，但有一個嚴重的 NULL 陷阱。
+「NOT IN 搭配子查詢，找出在某表中沒有對應記錄的資料。」這段查詢要找出從來沒下過訂單的顧客。
 
-問題出在：如果 orders.customer_id 允許 NULL 值，而 orders 表裡有一筆 customer_id = NULL 的訂單，那麼子查詢就回傳了 (1, 3, 5, NULL)。
+寫法很直覺，可是有一個嚴重的 NULL 陷阱。如果訂單表裡有一筆 `customer_id` 是 NULL，子查詢就會回傳像一、三、五、NULL 這樣的清單。
 
-MySQL 在執行 WHERE id NOT IN (1, 3, 5, NULL) 時，會把它展開成：
-WHERE id != 1 AND id != 3 AND id != 5 AND id != NULL
+NOT IN 會展開成 id 不等於一，而且不等於三，而且不等於五，而且不等於 NULL。最後那個比較永遠得不到真，整個條件就不成立，查詢一筆都回傳不了。
 
-而 id != NULL 永遠是 NULL（不是 TRUE），所以整個條件就是 NULL，不會回傳任何行。
+這個問題很隱蔽，平常沒有 NULL 時一切正常，哪天出現一筆，結果就突然錯了。
 
-這個 Bug 很隱蔽，因為平時可能沒有 customer_id = NULL 的資料，一切正常；但某天出現了這樣的資料，查詢就突然不對了。
-
-安全的替代方案：
-1. 確保子查詢的欄位設了 NOT NULL
-2. 用 NOT EXISTS（不受 NULL 影響）
-3. 用 LEFT JOIN + IS NULL
+安全的做法有三種：確保欄位設了 `NOT NULL`，或改用 NOT EXISTS，或用 LEFT JOIN 加 IS NULL。
 -->
 
 ---
@@ -415,9 +376,7 @@ class: flex flex-col justify-center items-center text-center
 # EXISTS / NOT EXISTS
 
 <!--
-進入第四部分：EXISTS 和 NOT EXISTS。
-
-EXISTS 是和 IN 並列最重要的子查詢形式，但它的邏輯和 IN 有根本上的不同。理解了這個差別，才能在對的場景選對工具。
+接下來是 EXISTS。它和 IN 一樣重要，但判斷的邏輯完全不同。
 -->
 
 ---
@@ -447,15 +406,15 @@ WHERE EXISTS (
 </div>
 
 <!--
-EXISTS 和 IN 的核心差別：
+「EXISTS 不關心子查詢回傳什麼資料，只關心子查詢是否回傳了至少一列。」
 
-IN 是「取清單，再對照」：先執行子查詢得到一個清單，再把外層每一列的欄位和這個清單比對。
+畫面上同一個問題寫了兩次。IN 版本是先取出清單，再一一對照。EXISTS 版本則是對每一位顧客問一次：這個顧客有完成的訂單嗎？只要找到一筆，答案就是有，這位顧客就被留下。
 
-EXISTS 是「逐一問問題」：對外層查詢的每一列，執行一次子查詢，問「這一列對應的相關資料存在嗎？」如果子查詢回傳至少一列，EXISTS 就是 TRUE，這一列就保留。
+注意 EXISTS 子查詢裡的 `o.customer_id = c.id`，它引用了外層的顧客 id。這種子查詢用到外層欄位的寫法，叫做「相關子查詢」。
 
-注意 EXISTS 版本裡的 o.customer_id = c.id——它引用了外層查詢的 c.id。這種「子查詢引用外層查詢欄位」的模式叫做「相關子查詢」（Correlated Subquery）。
+子查詢裡寫 `SELECT 1`，是因為 EXISTS 只在乎有沒有結果，選什麼欄位都不重要。
 
-EXISTS 的一個好處：因為只需要找到一列就夠了，MySQL 找到第一個符合條件的行就立刻停止，不需要把所有符合的行都找出來（短路求值）。
+EXISTS 還有一個好處，找到第一筆符合的資料就會停下來，不用把全部找完。
 -->
 
 ---
@@ -482,20 +441,11 @@ WHERE NOT EXISTS (
 | 建議使用時機 | 子查詢欄位確定無 NULL | 子查詢欄位可能有 NULL 時 |
 
 <!--
-NOT EXISTS 是解決 NOT IN NULL 陷阱的推薦替代方案。
+「NOT EXISTS 當子查詢回傳空結果時為 TRUE，用來找出沒有對應記錄的資料。」
 
-為什麼 NOT EXISTS 不受 NULL 影響？
+這段查詢同樣是找從來沒下過訂單的顧客，但不會有 NULL 陷阱。為什麼呢？以 Carol 為例，子查詢只會去找 `customer_id` 等於 Carol 編號的訂單。找不到，NOT EXISTS 就成立，Carol 就會出現在結果裡。訂單表裡有沒有 NULL 的資料，完全不影響對 Carol 的判斷。
 
-NOT EXISTS 問的問題是「這個子查詢有沒有回傳任何列？」如果 orders 裡有 customer_id = NULL 的資料，它不會「污染」我們對其他顧客的判斷。
-
-邏輯如下（以顧客 Carol id=3 為例）：
-EXISTS (SELECT 1 FROM orders WHERE customer_id = 3)
-
-這個子查詢只找 customer_id = 3 的訂單。如果沒有，就回傳空，NOT EXISTS 就是 TRUE，Carol 就出現在結果裡。
-
-至於 orders 表裡有沒有 customer_id = NULL 的資料，完全不影響對 customer_id = 3 的判斷。
-
-這就是 NOT EXISTS 比 NOT IN 更安全的原因。在實際工作中，如果子查詢的欄位允許 NULL，優先使用 NOT EXISTS 或 LEFT JOIN + IS NULL。
+下方表格整理了兩者的差別。NOT IN 只適合在子查詢欄位確定沒有 NULL 時使用。欄位可能有 NULL，就優先用 NOT EXISTS。
 -->
 
 ---
@@ -507,9 +457,7 @@ class: flex flex-col justify-center items-center text-center
 # 子查詢的位置
 
 <!--
-進入第五部分，說子查詢可以出現在 SQL 的哪些位置。
-
-子查詢不只能用在 WHERE 子句，還可以出現在 SELECT 和 FROM 裡。
+子查詢不只能放在 WHERE。接下來看它還能出現在 SELECT 和 FROM 裡。
 -->
 
 ---
@@ -539,16 +487,13 @@ WHERE EXISTS (
 ```
 
 <!--
-WHERE 子句裡的子查詢是最常見的形式，我們已經看了很多例子了。
+WHERE 裡的子查詢是最常見的，這頁整理了三種模式。
 
-三種常見模式：
-1. 比較運算子 + 純量子查詢：WHERE amount > (SELECT AVG...)
-2. IN/NOT IN + 表子查詢：WHERE id IN (SELECT ...)
-3. EXISTS/NOT EXISTS + 相關子查詢：WHERE EXISTS (SELECT 1 ...)
+第一種是比較運算子搭配純量子查詢，例如金額大於平均值。第二種是 IN 搭配表子查詢，例如顧客 id 在完成訂單的清單裡。第三種是 EXISTS 搭配相關子查詢，例如這個顧客有沒有訂單。
 
-這三種覆蓋了 WHERE 子查詢 90% 以上的使用場景。
+這三種涵蓋了 WHERE 子查詢絕大部分的使用場景。
 
-大家記住：如果子查詢回傳一個值，用比較運算子；如果回傳多個值，用 IN 或 EXISTS。
+選擇的方法很簡單：子查詢回傳一個值，就用比較運算子；回傳多個值，就用 IN 或 EXISTS。
 -->
 
 ---
@@ -575,19 +520,15 @@ ORDER BY o.customer_id, o.id;
 </div>
 
 <!--
-SELECT 子句裡的子查詢叫做「純量子查詢」，它必須剛好回傳一個值（一列一欄）。
+子查詢也可以放在 SELECT 後面，當成一個計算出來的欄位。
 
-在這個例子裡，對每一筆訂單，子查詢計算「這個顧客的所有訂單總金額」。注意 WHERE sub.customer_id = o.customer_id——這裡引用了外層查詢的 o.customer_id，這是相關子查詢。
+這段查詢在每一筆訂單旁邊，多顯示這位顧客所有訂單的總金額。關鍵是 `sub.customer_id = o.customer_id`，它引用了外層這筆訂單的顧客，所以這也是相關子查詢。這裡的子查詢必須剛好回傳一個值。
 
-效能問題：如果 orders 表有 10,000 筆資料，這個 SELECT 子句的子查詢就要執行 10,000 次。每次執行都要掃描 orders 表找出對應顧客的訂單，總計掃描 10,000 × （顧客平均訂單數）次。
+執行後，每筆訂單都會多一欄 `customer_total`。
 
-更好的做法是用 JOIN 加 GROUP BY：
-SELECT o.id, o.amount, c_total.total
-FROM orders o
-JOIN (SELECT customer_id, SUM(amount) AS total FROM orders GROUP BY customer_id) c_total
-  ON o.customer_id = c_total.customer_id
+不過效能要小心。外層有一萬筆訂單，這個子查詢就要執行一萬次。
 
-這樣子查詢只執行一次。
+比較好的做法，是先用一個子查詢依顧客分組算出總金額，再 JOIN 回訂單表。這樣分組統計只要做一次。
 -->
 
 ---
@@ -612,23 +553,13 @@ LIMIT 3;
 FROM 後面的子查詢必須加上別名（`AS order_summary`），因為 MySQL 需要一個名稱來引用這個「暫時的資料表」。
 
 <!--
-FROM 子句裡的子查詢叫做「衍生表」（Derived Table）或「內嵌視圖」（Inline View）。
+子查詢放在 FROM 裡，就是把它的結果當成一張暫時的資料表，這叫做衍生表。
 
-這種用法很常見：先用子查詢做一些聚合或篩選，把結果當成一張表，再對這個中間結果做進一步查詢。
+這段查詢要找出完成訂單總金額最高的前三位顧客。裡面的子查詢先依顧客分組，算出每個人的總金額。外層再把這個結果當成一張表，依金額排序，取前三筆。
 
-在這個例子裡：
-1. 子查詢先計算每個顧客的 completed 訂單總金額（GROUP BY customer_id）
-2. 外層查詢從這個「order_summary」表裡取出前三名
+要注意，FROM 裡的子查詢一定要取別名，例如這裡的 `AS order_summary`，否則 MySQL 會報錯。
 
-必須給 FROM 子查詢加別名（AS order_summary），這是語法要求。
-
-另一個常用的替代方案是 CTE（Common Table Expression，WITH 語句）：
-WITH order_summary AS (
-  SELECT customer_id, SUM(amount) AS total_amount ...
-)
-SELECT * FROM order_summary ORDER BY total_amount DESC LIMIT 3;
-
-CTE 在可讀性上通常比 FROM 子查詢好，MySQL 8.0 完整支援 CTE。
+另一個常見的寫法是 CTE，也就是 WITH 語句。先用 WITH 幫中間結果取名字，再在後面查詢它。可讀性通常比較好，MySQL 8 已經完整支援。
 -->
 
 ---
@@ -640,9 +571,7 @@ class: flex flex-col justify-center items-center text-center
 # 子查詢 vs JOIN
 
 <!--
-最後一個部分，說子查詢和 JOIN 的比較。
-
-很多查詢既可以用子查詢，也可以用 JOIN 實現。選哪個更好？
+最後一段，很多查詢既能用子查詢寫，也能用 JOIN 寫，到底該怎麼選？
 -->
 
 ---
@@ -662,21 +591,13 @@ class: flex flex-col justify-center items-center text-center
 </div>
 
 <!--
-子查詢 vs JOIN 是一個很常見的選擇問題。
+表格從幾個面向比較子查詢和 JOIN。
 
-兩個主要因素：可讀性和效能。
+可讀性上，子查詢通常比較直覺，符合「先算這個，再用這個」的思考方式。效能上，MySQL 8 的最佳化器很聰明，常會把 IN 子查詢自動轉成 JOIN 執行。但相關子查詢要對每一列都執行一次，通常比較慢。
 
-可讀性：子查詢有時更直覺，因為它符合「先做這個，再做那個」的思考方式。JOIN 需要你同時想清楚多張表的關聯。
+所以實務建議是這樣的。IN 子查詢和 INNER JOIN 效能相近，選好讀的就好。NOT IN 優先改寫成 NOT EXISTS 或 LEFT JOIN 加 IS NULL，避開 NULL 陷阱。SELECT 裡的相關子查詢，盡量改用 JOIN。
 
-效能：MySQL 8.x 的查詢最佳化器很聰明，很多時候會把 IN 子查詢自動轉換成等效的 JOIN 執行。但相關子查詢（在 SELECT 或 WHERE 裡引用外層欄位的那種）通常無法被最佳化掉，效能較差。
-
-實務建議：
-1. IN + 子查詢 vs INNER JOIN：效能相近，選可讀性更好的
-2. NOT IN + 子查詢 vs LEFT JOIN + IS NULL：優先用後者，避免 NULL 陷阱
-3. EXISTS vs IN：資料量大時，EXISTS 可能因為短路求值而更快
-4. SELECT/FROM 子查詢 vs 用 JOIN 重寫：如果是相關子查詢，盡量改用 JOIN
-
-最終還是要用 EXPLAIN 實際測試，而不是憑感覺猜測哪個快。
+最後，不要憑感覺猜哪個快，用上一章學的 EXPLAIN 實際看看。
 -->
 
 ---
@@ -707,18 +628,11 @@ WHERE o.status = 'completed';
 ```
 
 <!--
-這三個寫法的結果完全相同，讓大家直觀感受到不同寫法的差異。
+這頁把同一個問題，用三種寫法寫出來：找出下過完成訂單的顧客。
 
-寫法一（IN）：最易理解——「顧客的 ID 在 completed 訂單的 customer_id 清單裡」。
-缺點：子查詢先把所有 customer_id 都取出來，形成一個清單，再逐一比對。
+寫法一是 IN，最好理解，顧客的 id 在完成訂單的清單裡。寫法二是 EXISTS，對每位顧客問有沒有完成的訂單，找到一筆就停，顧客訂單很多時可能比較快。寫法三是 INNER JOIN，最佳化器最擅長處理，但因為一位顧客可能有好幾筆完成訂單，JOIN 之後會重複，所以要加 DISTINCT。
 
-寫法二（EXISTS）：有短路求值優勢——「這個顧客存在 completed 訂單嗎？」找到第一筆就停止。
-在顧客有很多 completed 訂單的情況下，EXISTS 會比 IN 快（不需要找完所有）。
-
-寫法三（JOIN）：最直觀對 MySQL 最佳化器——MySQL 可以選擇最有效率的執行順序。
-需要加 DISTINCT 因為一個顧客可能有多筆 completed 訂單，JOIN 後會有重複的顧客行。
-
-⚠️ 實際選擇哪個，除了可讀性偏好，應該用 EXPLAIN 看看各個寫法的執行計畫，選效能最好的。
+這三種寫法執行後的結果完全一樣。實際要選哪個，除了可讀性，最好用 EXPLAIN 比較執行計畫。
 -->
 
 ---
@@ -739,19 +653,11 @@ WHERE o.status = 'completed';
 </div>
 
 <!--
-學完這章，大家能夠解決更複雜的查詢需求了。
+我們整理這一章。子查詢是括號裡的 SELECT，最常用的是回傳一個值的純量子查詢，和回傳結果集的表子查詢。LIKE 的前綴搜尋用得到索引，包含搜尋用不到。
 
-最重要的幾個觀念：
+IN 搭配子查詢篩選清單，但 NOT IN 遇到 NULL 會整個失效。EXISTS 判斷存在性，NOT EXISTS 不受 NULL 影響。子查詢可以放在 WHERE、SELECT 和 FROM，其中 SELECT 裡的相關子查詢要注意效能。
 
-1. NOT IN 有 NULL 陷阱——實際工作中，遇到「找不存在關聯」的需求，優先使用 NOT EXISTS 或 LEFT JOIN + IS NULL。
-
-2. EXISTS 的短路求值——如果只需要確認「是否存在」，而不需要知道「有幾筆」，EXISTS 通常是好的選擇。
-
-3. 相關子查詢的效能警告——SELECT 子句裡的子查詢對每一列都執行一次，資料量大時要小心。用 EXPLAIN 驗證，必要時改寫成 JOIN。
-
-4. LIKE 的索引問題——前綴搜尋（'abc%'）可以用索引，中綴/後綴搜尋（'%abc%'）不行。
-
-做兩道練習！
+接下來，我們用兩題練習把這些觀念練熟。
 -->
 
 ---
@@ -769,13 +675,15 @@ layout: default
 3. 查詢商品名稱中**包含「iPhone」**，且有被加入任何訂單的商品（假設有 order_items 表）
 
 <!--
-這三題難度遞增。
+第一題用本章的三張表，任務有三個。
 
-第一題：純量子查詢，WHERE amount > (SELECT AVG(amount) FROM orders)。
+第一個是找出金額高於所有訂單平均金額的訂單。第二個是找出從來沒有取消過任何訂單的顧客。第三個是找出名稱包含 iPhone，而且曾經被下單過的商品，這裡假設有一張訂單明細表 `order_items`。
 
-第二題：找「不存在」的記錄，可以用 NOT IN 或 NOT EXISTS。提示：選 NOT EXISTS 更安全。
+想想看，第二題要找的是「不存在」的資料，用 NOT IN 和 NOT EXISTS，哪一個比較安全？
 
-第三題：結合 LIKE 和 EXISTS（或 IN），找有訂購記錄的 iPhone 商品。
+我們先暫停一下，自己寫寫看。
+
+【講師】給大家十分鐘，可以提醒第一題用純量子查詢。
 -->
 
 ---
@@ -804,13 +712,13 @@ WHERE NOT EXISTS (
 ```
 
 <!--
-解答分析：
+我們來看前兩題的解答。
 
-題一：(SELECT AVG(amount) FROM orders) 是純量子查詢，回傳一個數字。WHERE amount > 這個數字，篩選高於平均的訂單。
+第一題，括號裡的 `SELECT AVG(amount)` 是純量子查詢，回傳一個數字，外層再篩選金額大於這個數字的訂單，執行後依金額由高到低列出。
 
-題二：NOT EXISTS 的相關子查詢。對每個顧客，問「這個顧客有沒有 cancelled 的訂單？」如果沒有（NOT EXISTS），就保留這個顧客。
+第二題用 NOT EXISTS。對每位顧客，子查詢去找他有沒有狀態是 cancelled 的訂單。找不到，NOT EXISTS 就成立，這位顧客就被留下。
 
-⚠️ 如果改用 NOT IN：WHERE id NOT IN (SELECT customer_id FROM orders WHERE status = 'cancelled')，如果有 customer_id = NULL 的訂單，就會有 NULL 陷阱。NOT EXISTS 更安全。
+這也回答了剛才的問題。改用 NOT IN 也能寫，但只要訂單表裡出現一筆 `customer_id` 是 NULL 的資料，就會掉進 NULL 陷阱，結果變成空的。所以 NOT EXISTS 比較安全。
 -->
 
 ---
@@ -831,7 +739,11 @@ WHERE p.name LIKE '%iPhone%'
 ```
 
 <!--
-題三：LIKE '%iPhone%' 搭配 EXISTS。對每個包含 iPhone 的商品，確認它在 order_items 表裡有記錄（被加入過訂單）。
+第三題結合了 LIKE 和 EXISTS。
+
+外層用 `LIKE '%iPhone%'` 篩選名稱包含 iPhone 的商品。再用 EXISTS 檢查，訂單明細裡有沒有這個商品的記錄。有的話，代表它被下單過，就保留下來。
+
+執行後，就會得到所有曾經賣出過的 iPhone 商品。
 -->
 
 ---
@@ -861,13 +773,15 @@ INSERT INTO orders (customer_id, amount, status, order_date) VALUES
 3. 說明為什麼 NOT IN 版本找不到 Carol（id=3）
 
 <!--
-這題讓大家親手驗證 NULL 陷阱，比光說理論更有說服力。
+第二題，我們要親手驗證 NOT IN 的 NULL 陷阱。
 
-NOT IN 版本：子查詢回傳 (1, NULL)，WHERE id NOT IN (1, NULL) 展開成 id != 1 AND id != NULL。id != NULL 永遠是 NULL，整個條件就是 NULL，所以沒有任何行被回傳。
+畫面上先準備測試資料，三位顧客 Alice、Bob、Carol，以及兩筆訂單，第一筆屬於 Alice，第二筆故意把 `customer_id` 設成 NULL。
 
-NOT EXISTS 版本：對 Carol（id=3）執行子查詢，找 customer_id = 3 的訂單，沒有找到，NOT EXISTS 就是 TRUE，Carol 就出現在結果裡。
+任務有三個。先執行 NOT IN 的查詢，觀察結果。再改用 NOT EXISTS，比較兩者的差別。最後說明，為什麼 NOT IN 的版本找不到 Carol。
 
-這個驗證讓大家理解為什麼「NOT EXISTS 比 NOT IN 更安全」。
+我們先暫停一下，自己跑跑看。
+
+【講師】本章的 orders 表 customer_id 設了 NOT NULL，插入 NULL 會失敗。驗證前請先執行 `ALTER TABLE orders MODIFY customer_id INT NULL`。
 -->
 
 ---
@@ -905,20 +819,13 @@ WHERE o.id IS NULL;
 </div>
 
 <!--
-看這個驗證結果，NOT IN 版本回傳空，而 NOT EXISTS 和 LEFT JOIN + IS NULL 都正確找到了 Carol。
+我們來看結果。NOT IN 版本回傳空的，NOT EXISTS 和 LEFT JOIN 加 IS NULL 都正確找到了 Carol。
 
-NOT IN 失敗的原因：
-子查詢 SELECT customer_id FROM orders 回傳 (1, NULL)。
-WHERE id NOT IN (1, NULL) 被展開為 WHERE id <> 1 AND id <> NULL。
-id <> NULL 的結果是 NULL（不是 FALSE，不是 TRUE，是 NULL）。
-所以整個 WHERE 條件對任何 id 都是 NULL，沒有行被回傳。
+NOT IN 失敗的原因是，子查詢回傳了一和 NULL。條件展開後，變成 id 不等於一，而且 id 不等於 NULL。跟 NULL 比較的結果既不是真也不是假，所以對任何顧客，整個條件都不成立，一筆都回傳不了。
 
-NOT EXISTS 不受影響的原因：
-對 Carol（id=3）執行子查詢：SELECT 1 FROM orders WHERE customer_id = 3。
-這個子查詢回傳空（orders 表裡沒有 customer_id = 3 的行），NOT EXISTS 就是 TRUE。
-customer_id = NULL 的那筆訂單完全不影響對 id = 3 的判斷。
+NOT EXISTS 不受影響，因為它對 Carol 只會去找屬於 Carol 的訂單。找不到，條件就成立。那筆 NULL 的訂單，完全不影響對 Carol 的判斷。
 
-這個驗證是面試和實際工作中都很重要的知識點，請大家一定要記住！
+這是面試和實務上都很常遇到的知識點，親手驗證過一次，就不容易忘了。
 -->
 
 ---
@@ -930,14 +837,9 @@ layout: end
 有任何問題嗎？
 
 <!--
-現在開放 Q&A 時間。
+今天我們學了子查詢的各種用法。最重要的三個觀念是：NOT IN 有 NULL 陷阱，找不存在的資料時優先用 NOT EXISTS；EXISTS 找到一筆就停，適合確認是否存在；SELECT 裡的相關子查詢會逐列執行，要注意效能。
 
-大家對子查詢有沒有什麼疑問？
+下一章，我們要學 Flyway，用版本控制的方式管理資料庫結構的變更。我們下一章見。
 
-最重要的三個觀念：
-1. NOT IN 的 NULL 陷阱——生產環境優先使用 NOT EXISTS
-2. EXISTS 的短路求值——只確認存在性時使用
-3. 相關子查詢的效能警告——SELECT 子句裡的子查詢要小心
-
-如果大家想繼續深入，下一個可以學的主題是 Window Functions（視窗函式），它讓我們能夠在不改變查詢行數的情況下做聚合計算，非常強大！
+【講師】開放提問，可以請同學比較同一題用 IN、EXISTS、JOIN 三種寫法的差別。
 -->

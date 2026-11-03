@@ -127,6 +127,11 @@ style: |
       <div>子查詢與進階查詢</div>
       <div class="chapter-subtitle">IN / LIKE / EXISTS / Correlated Subquery</div>
     </Link>
+    <Link to="ch11" class="chapter-card">
+      <div class="chapter-num">Ch 11</div>
+      <div>Flyway 資料庫版本控制</div>
+      <div class="chapter-subtitle">Migration / V R U / schema_history</div>
+    </Link>
   </div>
 </div>
 
@@ -159,4 +164,7 @@ src: ./ch09-view.md
 ---
 ---
 src: ./ch10-subquery.md
+---
+---
+src: ./ch11-flyway.md
 ---
