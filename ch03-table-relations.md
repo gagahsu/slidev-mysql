@@ -599,29 +599,30 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 設計一個部落格資料庫
+### 設計動態問卷系統的資料庫
 
-你要設計一個部落格系統的資料庫，需要記錄以下關聯：
+後面的課程會做一套「動態問卷系統」，資料庫就從這裡開始設計：
 
-- 使用者（users）可以寫多篇文章（posts）
-- 每篇文章可以有多個標籤（tags），每個標籤也可以出現在多篇文章
-- 每篇文章可以有多則留言（comments），每則留言屬於一個使用者
+- 一份問卷（surveys）有多個題目（questions），題目有多個選項（options）
+- 會員（users）可以填寫多份問卷，也允許**未登入**的訪客填寫
+- 每次填寫是一筆作答紀錄（survey_responses），底下有每一題的答案（response_answers）
+- 同一份問卷、同一個 Email 只能填寫一次
 
 **任務：**
-1. 識別每種關聯的類型（一對一、一對多或多對多）
-2. 設計所有必要的資料表，包括中介表
-3. 定義適當的 FOREIGN KEY 和 ON DELETE 行為
+1. 識別每組關聯的類型（一對一、一對多或多對多）
+2. 設計所有必要的資料表與外鍵，並決定 `ON DELETE` 行為
+3. 用約束保證「同一 Email 不能重複填寫同一份問卷」
 
 <!--
-第一題，我們來設計一個部落格資料庫。使用者會寫文章，文章可以掛標籤，文章底下還有留言，每則留言都是某個使用者寫的。
+接下來的練習，都會圍繞同一個專案：動態問卷系統。後面的章節也會繼續用到這裡設計的資料表。
 
-請大家先判斷每一組關聯是哪一種類型，再設計所有資料表，包括需要的中介表，最後定義外鍵和刪除時的行為。
+這題有六張表要設計。請大家先找出每組關聯的類型，再決定外鍵放在哪裡，刪除時又該怎麼處理。
 
-可以先想一個問題：刪除一個使用者的時候，他的文章和他的留言，是不是應該用一樣的處理方式？
+思考一下，訪客不用登入也能填寫，那作答紀錄裡的 `user_id` 可以設成 NOT NULL 嗎？
 
-我們先暫停一下，動手設計看看。
+我們先暫停一下，自己動手設計看看。
 
-【講師】給大家十到十五分鐘，可以提醒先畫出關聯圖再寫 SQL。
+【講師】給大家十到十五分鐘，可以先請同學在白板上畫出六張表的關聯。
 -->
 
 ---
@@ -630,36 +631,91 @@ layout: default
 
 # 練習 1：解題提示（Part 1）
 
-`users` 與 `posts` — 一對多，外鍵 `user_id` 放在「多」的 `posts` 表：
+`surveys` 是最上層的表，先把問卷本身的資料存好：
 
 ```sql
-CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL, email VARCHAR(255) NOT NULL UNIQUE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE posts (id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL, title VARCHAR(200) NOT NULL, content TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user_id (user_id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+CREATE TABLE surveys (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  title       VARCHAR(50) NOT NULL,
+  description VARCHAR(300),
+  start_date  DATE NOT NULL,
+  end_date    DATE NOT NULL,
+  published   TINYINT NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>ON DELETE CASCADE：</b>刪除使用者時，他的文章也一起刪除。<code>user_id</code> 加 INDEX，JOIN 查詢才快。
+💡 <b>「進行中 / 已結束」不存進資料庫。</b>狀態可以由日期算出來，存成欄位反而會過期。
 </div>
 
 <!--
-我們分三頁來看解答，先看使用者和文章。
+我們從最上層的問卷開始。`surveys` 不參照別的表，只存問卷本身的資料。
 
-一個使用者可以寫很多篇文章，這是一對多，所以外鍵 `user_id` 放在多的那邊，也就是 `posts`。
+這裡有個重要的設計決定。問卷的進行中或已結束，我們沒有存成欄位。因為這個狀態每天都可能改變，存起來就得天天更新，很容易出錯。
 
-`ON DELETE CASCADE` 表示刪除使用者時，他的文章也一起刪掉。這其實是一個設計決策。如果希望文章保留下來，顯示成已刪除的使用者，也可以改用 `SET NULL`，但這時 `user_id` 就不能是 `NOT NULL`。
-
-另外 `user_id` 加了 `INDEX`，之後查某位作者的所有文章時，JOIN 才會快。
-
-執行後，每篇文章都一定屬於一個存在的使用者。
+所以我們只存有沒有發佈，以及起訖日期，狀態等查詢時再算出來。怎麼算，後面查詢的章節會練習到。
 -->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 1 續）
+
+`surveys` 到 `questions` 是一對多，外鍵放在「多」的那邊：
+
+```sql
+CREATE TABLE questions (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  survey_id   INT NOT NULL,
+  title       VARCHAR(200) NOT NULL,
+  type        VARCHAR(10) NOT NULL,
+  required    TINYINT NOT NULL DEFAULT 0,
+  order_index INT NOT NULL,
+  INDEX idx_questions_survey (survey_id),
+  FOREIGN KEY (survey_id) REFERENCES surveys(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+<!--
+接著是題目。一份問卷有很多題目，這是一對多，所以外鍵 `survey_id` 放在 `questions` 這邊。
+
+外鍵用 `ON DELETE CASCADE`。問卷刪掉之後，它的題目也沒有意義了，就一起刪除。
+
+`order_index` 用來記錄畫面上的順序。資料表本身不保證順序，想固定順序就要自己存一個欄位。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 1 續）
+
+`options` 也一樣，外鍵放在「多」的那邊：
+
+```sql
+CREATE TABLE options (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  question_id INT NOT NULL,
+  label       VARCHAR(100) NOT NULL,
+  order_index INT NOT NULL,
+  INDEX idx_options_question (question_id),
+  FOREIGN KEY (question_id) REFERENCES questions(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+<!--
+一個題目也有很多選項，同樣是一對多，外鍵放在 `options`。
+
+文字題沒有選項，只要在這張表裡沒有對應的資料列就好，不需要另外處理。
+
+到這裡，問卷、題目和選項這三層就串起來了。
+-->
+
+
 
 ---
 layout: default
@@ -667,32 +723,60 @@ layout: default
 
 # 練習 1：解題提示（Part 2）
 
-`posts` 與 `tags` — 多對多，需要中介表 `post_tags`：
+`users` 存會員資料，`email` 不可重複：
 
 ```sql
-CREATE TABLE tags (id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL UNIQUE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE post_tags (post_id INT NOT NULL, tag_id INT NOT NULL,
-  PRIMARY KEY (post_id, tag_id),
-  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+CREATE TABLE users (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(50) NOT NULL,
+  email      VARCHAR(100) NOT NULL UNIQUE,
+  password   VARCHAR(100) NOT NULL,
+  phone      VARCHAR(20),
+  role       VARCHAR(10) NOT NULL DEFAULT 'USER',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>複合主鍵 </b><code>(post_id, tag_id)</code> — 同一篇文章不會重複掛同一個標籤。
-</div>
+<!--
+再來是會員。`users` 也不參照別的表，重點是 `email` 加上 `UNIQUE`，同一個 Email 不能註冊兩次。
+
+`role` 用來區分一般會員和管理員，預設是一般會員。
+
+`password` 的長度給到一百，因為之後存的不是密碼原文，而是加密過的雜湊字串，長度會比原本的密碼長很多。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 2 續）
+
+訪客免登入，所以 `user_id` 可以是 `NULL`：
+
+```sql
+CREATE TABLE survey_responses (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  survey_id    INT NOT NULL,
+  user_id      INT,
+  name         VARCHAR(50) NOT NULL,
+  phone        VARCHAR(20) NOT NULL,
+  email        VARCHAR(100) NOT NULL,
+  age          INT,
+  submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_survey_email (survey_id, email),
+  FOREIGN KEY (survey_id) REFERENCES surveys(id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
 
 <!--
-第二部分是文章和標籤。一篇文章有很多標籤，一個標籤也會出現在很多文章，這是多對多，所以需要中介表 `post_tags`。
+作答紀錄把姓名、手機和 Email 直接存在自己身上，因為訪客沒有會員資料可以關聯。這也回答了剛才的思考題，`user_id` 不能是 NOT NULL。
 
-它的主鍵是 `post_id` 和 `tag_id` 組成的複合主鍵，這樣同一篇文章就不會重複掛上同一個標籤。
+刪除會員時用 `SET NULL`。帳號刪掉了，作答資料還是要保留，只是變成匿名。
 
-兩個外鍵都設了 `ON DELETE CASCADE`。刪除一篇文章時，這篇文章所有的標籤連結會一起刪掉。刪除一個標籤時，所有文章跟這個標籤的連結也會刪掉，但文章本身不會被刪。
-
-另外 `tags` 的 `name` 加了 `UNIQUE`，避免出現兩個名字一樣的標籤。
+重點是 `UNIQUE KEY (survey_id, email)`。這是複合唯一，同一份問卷同一個 Email 只能有一筆，換一份問卷就可以再填。
 -->
 
 ---
@@ -701,67 +785,73 @@ layout: default
 
 # 練習 1：解題提示（Part 3）
 
-`comments` — 同時參照 `posts` 和 `users`，兩個一對多：
+`response_answers` 同時參照「哪一次作答」與「哪一道題」：
 
 ```sql
-CREATE TABLE comments (id INT AUTO_INCREMENT PRIMARY KEY,
-  post_id    INT NOT NULL,
-  user_id    INT,
-  content    TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_post_id (post_id),
-  INDEX idx_user_id (user_id),
-  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+CREATE TABLE response_answers (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  response_id INT NOT NULL,
+  question_id INT NOT NULL,
+  answer_text VARCHAR(500),
+  INDEX idx_answers_response (response_id),
+  INDEX idx_answers_question (question_id),
+  FOREIGN KEY (response_id) REFERENCES survey_responses(id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES questions(id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>兩個外鍵，兩種行為：</b>刪文章 → 留言一起刪（<code>CASCADE</code>）；刪使用者 → 留言保留但作者變匿名（<code>SET NULL</code>）。
+<div class="mt-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 text-gray-700 text-sm text-left">
+⚠️ <b>取捨：</b>多選答案用分號串接，例如 <code>青菜;滷蛋</code>。嚴格說這違反 1NF，這裡是為了讓表結構簡單，代價是統計時要拆字串。
 </div>
 
 <!--
-最後是留言表 `comments`。它同時參照文章和使用者，可是它不是中介表，而是兩個一對多裡「多」的那一邊。一篇文章有很多留言，一個使用者也寫很多留言。
+最後是每一題的答案。一次作答有很多題的答案，一道題也有很多人的答案，所以這張表有兩個外鍵。它還存了答案內容，所以用自己的 `id` 當主鍵。
 
-這是初學者容易搞混的地方。看到兩個外鍵，就以為是中介表。其實中介表的特徵，是它的主鍵由那兩個外鍵組成。`comments` 有自己的 `id`，所以不是。
+這裡要老實說一個取捨。多選題的答案用分號串成一個字串，其實違反了第一正規化。我們的規格選擇這樣做，好處是一題一列、結構簡單，壞處是統計時要把字串拆開。
 
-這裡就能回答練習時的問題了。兩個外鍵用了不同的刪除行為。`post_id` 用 `CASCADE`，文章刪了，底下的留言也沒意義了。`user_id` 用 `SET NULL`，使用者刪了，留言對其他讀者還有價值，就保留下來，作者變成匿名。
-
-也因為要 `SET NULL`，`user_id` 刻意沒有寫 `NOT NULL`。
+設計本來就常有取捨，重要的是知道自己放棄了什麼。
 -->
-
 
 ---
 layout: default
 ---
 
 # 練習 2：任務說明
-### 分析並修正 FOREIGN KEY 設計
+### 分析並修正問卷資料表設計
 
-以下是一段有問題的資料表設計，找出所有問題並修正：
+請從設計、資料型別、引擎、外鍵行為、約束，找出至少五個問題並修正：
 
 ```sql
-CREATE TABLE orders (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  customer_id INT NOT NULL,
-  product_ids VARCHAR(200),
-  total       FLOAT,
-  FOREIGN KEY (customer_id) REFERENCES customers(id)
+CREATE TABLE survey (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  title      VARCHAR(50),
+  questions  TEXT,         -- 存成 'Q1;Q2;Q3'
+  published  VARCHAR(5),   -- 存成 'yes' / 'no'
+  start_date VARCHAR(10),  -- 存成 '2025/01/10'
+  end_date   VARCHAR(10)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE survey_answer (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  survey_id INT NOT NULL,
+  email     VARCHAR(100),
+  answers   TEXT,          -- 存成 'A;B;C;D'
+  FOREIGN KEY (survey_id) REFERENCES survey(id)
+) ENGINE=MyISAM;
 ```
 
-**找出至少四個問題：**設計、資料型別、引擎、外鍵行為。
-
 <!--
-第二題是找錯題，把前三章學到的東西綜合起來。畫面上這段 `orders` 的設計可以執行，可是藏了好幾個問題。
+第二題換個角度，我們來當審查的人。畫面上是一位新手設計的問卷資料表，看起來能用，其實問題不少。
 
-請大家從四個方向檢查：`product_ids` 這個欄位違反了哪一條正規化規則？`total` 用的型別適合存金錢嗎？這個引擎下，外鍵真的有作用嗎？外鍵的刪除行為有沒有寫清楚？
+請大家從設計、資料型別、引擎、外鍵行為和約束這幾個方向，找出至少五個問題，並想想該怎麼修正。
 
-另外，字元集和索引也值得再看一眼。
+思考一下，如果要修改第二題的題目名稱，或是統計第二題有多少人選 B，這個設計做得到嗎？
 
-我們先暫停一下，看看自己能找到幾個問題。
+我們先暫停一下，自己找找看。
 
-【講師】給大家五分鐘，可以先請同學報出找到的數量。
+【講師】給大家五到十分鐘，可以請同學輪流說出找到的問題。
 -->
 
 ---
@@ -772,21 +862,42 @@ layout: default
 
 | 問題 | 說明 | 修正 |
 | --- | --- | --- |
-| `product_ids VARCHAR(200)` | 多個值塞在一個欄位，違反 1NF | 建立 `order_items` 中介表 |
-| `FLOAT` 存金額 | 浮點數有精度問題 | 改用 `DECIMAL(10,2)` |
-| `ENGINE=MyISAM` | FOREIGN KEY 不起作用 | 改用 `ENGINE=InnoDB` |
-| 無 `ON DELETE` 指定 | 預設 RESTRICT，但應明確標示 | 加上 `ON DELETE RESTRICT` |
-| `CHARSET=utf8` | 不支援 emoji 等 4-byte 字元 | 改用 `utf8mb4` |
-| 缺少 `INDEX` | JOIN 效能差 | 加上 `INDEX idx_customer_id (customer_id)` |
+| `questions TEXT` 存 `Q1;Q2;Q3` | 違反 1NF，也無法設定題型、必填 | 拆成 `questions`、`options` |
+| `answers TEXT` 串起整份答案 | 無法統計單一題目的結果 | 改成 `response_answers`，一題一列 |
+| `published VARCHAR(5)` | 字串容易打錯，也佔空間 | 改用 `TINYINT`（0 / 1） |
+| `start_date VARCHAR(10)` | 無法做日期比較，也沒有格式檢查 | 改用 `DATE` |
 
 <!--
-答案總共有六個問題，剛好涵蓋了前三章的重點。
+前四個問題都和設計與型別有關。
 
-`product_ids` 把好幾個值塞在一個欄位，違反 1NF，要改成一張 `order_items` 表，一筆記錄一種商品和數量。`total` 用了 `FLOAT`，有精度問題，金額要用 `DECIMAL`。字元集要改成 `utf8mb4`，外鍵欄位要加索引，刪除行為也最好明確寫出 `RESTRICT`。
+最值得討論的是 `answers` 這一欄。整份答案串成一個字串，看起來省事，卻沒辦法回答第二題有多少人選 B，而這正是後台統計頁要做的事。
 
-其中最隱蔽的是 `ENGINE=MyISAM`。外鍵語法不會報錯，可是約束完全沒有作用，這種錯誤平常很難發現。
+這也回答了剛才的思考題。題目和答案都塞在一個欄位裡，要修改或統計其中一題都很困難，所以要拆成獨立的資料表。
 
-大家都找到六個了嗎？
+日期存成字串也一樣，沒辦法正確比較先後，也擋不住格式錯誤的資料。
+-->
+
+---
+layout: default
+---
+
+# 練習 2：解題提示（續）
+
+| 問題 | 說明 | 修正 |
+| --- | --- | --- |
+| `ENGINE=MyISAM` | FOREIGN KEY 不起作用 | 改用 `ENGINE=InnoDB` |
+| `CHARSET=utf8` | 不支援 emoji 等 4-byte 字元 | 改用 `utf8mb4` |
+| 沒有 `UNIQUE (survey_id, email)` | 同一人可以重複填寫 | 加上複合唯一約束 |
+| 外鍵沒有 `ON DELETE`、沒明確加 `INDEX` | 行為與意圖都不清楚 | 明確指定 `CASCADE`，並加上 `INDEX` |
+
+<!--
+後面四個問題和引擎與約束有關。
+
+用了 MyISAM，外鍵語法不會報錯，卻完全不起作用，這就是剛才提過的隱蔽陷阱。
+
+唯一約束也很容易漏掉。程式雖然可以先查一次有沒有填過，但兩個請求同時進來時，可能都查到沒填過。資料庫的唯一約束才擋得住這種情況。
+
+我們這裡一共列了八個問題，大家找到幾個呢？關聯設計到這裡就練完了，這六張表下一章會真正建立起來。
 -->
 
 ---

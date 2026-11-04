@@ -665,25 +665,25 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 子查詢與 EXISTS 實作
+### 動態問卷：用子查詢與 EXISTS 找答案
 
-使用本章的 customers、orders、products 資料表：
+使用 `dynamic_survey` 資料庫（`sql/schema.sql` + `sql/seed.sql`）：
 
 **任務：**
-1. 查詢訂單金額高於**所有訂單平均金額**的訂單，顯示訂單 ID、顧客 ID、金額
-2. 找出**從未取消過任何訂單**的顧客（status = 'cancelled'）
-3. 查詢商品名稱中**包含「iPhone」**，且有被加入任何訂單的商品（假設有 order_items 表）
+1. 找出作答人數**高於平均**的問卷，顯示 ID、標題、作答人數（平均只算有人作答的問卷）
+2. 「待填寫」清單：找出**進行中**、而且 `ming@example.com` **還沒填過**的問卷（NOT EXISTS）
+3. 找出**有人填寫過**，而且**包含必填題目**的問卷（EXISTS）
 
 <!--
-第一題用本章的三張表，任務有三個。
+這一題有三個問卷系統的真實需求，難度一題比一題高。
 
-第一個是找出金額高於所有訂單平均金額的訂單。第二個是找出從來沒有取消過任何訂單的顧客。第三個是找出名稱包含 iPhone，而且曾經被下單過的商品，這裡假設有一張訂單明細表 `order_items`。
+第一題要比較作答人數和平均，可是平均要先算出每份問卷的人數才能計算。第二題要找不存在的紀錄。第三題有兩個條件，各自對應一個 EXISTS。
 
-想想看，第二題要找的是「不存在」的資料，用 NOT IN 和 NOT EXISTS，哪一個比較安全？
+思考一下，平均人數可以直接寫成 `AVG(COUNT(*))` 嗎？
 
-我們先暫停一下，自己寫寫看。
+我們先暫停一下，自己動手寫寫看。
 
-【講師】給大家十分鐘，可以提醒第一題用純量子查詢。
+【講師】給大家十五分鐘，第一題可以提示先寫出每份問卷的人數。
 -->
 
 ---
@@ -693,32 +693,33 @@ layout: default
 # 練習 1：解題提示
 
 ```sql
--- 題一：高於平均金額的訂單
-SELECT id, customer_id, amount, order_date
-FROM orders
-WHERE amount > (
-  SELECT AVG(amount) FROM orders
-)
-ORDER BY amount DESC;
-
--- 題二：從未取消訂單的顧客（用 NOT EXISTS）
-SELECT id, name, email
-FROM customers c
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders o
-  WHERE o.customer_id = c.id
-    AND o.status = 'cancelled'
-);
+-- 1. 作答人數高於平均的問卷
+SELECT s.id, s.title,
+       (SELECT COUNT(*) FROM survey_responses r
+        WHERE r.survey_id = s.id) AS response_count
+FROM surveys s
+WHERE (SELECT COUNT(*) FROM survey_responses r
+       WHERE r.survey_id = s.id) > (
+        SELECT AVG(cnt)
+        FROM (SELECT COUNT(*) AS cnt
+              FROM survey_responses
+              GROUP BY survey_id) t
+      )
+ORDER BY response_count DESC;
 ```
 
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>結果：</b>平均是 2.5 人，所以是午餐偏好調查（4 人）和校園活動調查（3 人）。
+</div>
+
 <!--
-我們來看前兩題的解答。
+先回答思考題，`AVG(COUNT(*))` 是不行的，聚合函式不能這樣巢狀使用。
 
-第一題，括號裡的 `SELECT AVG(amount)` 是純量子查詢，回傳一個數字，外層再篩選金額大於這個數字的訂單，執行後依金額由高到低列出。
+所以我們用衍生表，先算出每份問卷的人數，再取平均，得到二點五。外層再拿每份問卷的人數和它比較。
 
-第二題用 NOT EXISTS。對每位顧客，子查詢去找他有沒有狀態是 cancelled 的訂單。找不到，NOT EXISTS 就成立，這位顧客就被留下。
+每份問卷的人數，用相關子查詢算出來，因為它要參照外層的 `s.id`。
 
-這也回答了剛才的問題。改用 NOT IN 也能寫，但只要訂單表裡出現一筆 `customer_id` 是 NULL 的資料，就會掉進 NULL 陷阱，結果變成空的。所以 NOT EXISTS 比較安全。
+執行後會查到兩份問卷，午餐偏好調查四人，校園活動調查三人。
 -->
 
 ---
@@ -728,22 +729,32 @@ layout: default
 # 練習 1：解題提示（續）
 
 ```sql
--- 題三：有訂購記錄的 iPhone 商品
-SELECT p.id, p.name, p.price
-FROM products p
-WHERE p.name LIKE '%iPhone%'
-  AND EXISTS (
-    SELECT 1 FROM order_items oi
-    WHERE oi.product_id = p.id
+-- 2. 進行中，且 ming 還沒填過的問卷
+SELECT s.id, s.title, s.end_date
+FROM surveys s
+WHERE s.published = 1
+  AND CURDATE() BETWEEN s.start_date AND s.end_date
+  AND NOT EXISTS (
+    SELECT 1 FROM survey_responses r
+    WHERE r.survey_id = s.id
+      AND r.email = 'ming@example.com'
   );
+
+-- 3. 有人填寫過，且包含必填題目的問卷
+SELECT s.id, s.title
+FROM surveys s
+WHERE EXISTS (SELECT 1 FROM survey_responses r
+              WHERE r.survey_id = s.id)
+  AND EXISTS (SELECT 1 FROM questions q
+              WHERE q.survey_id = s.id AND q.required = 1);
 ```
 
 <!--
-第三題結合了 LIKE 和 EXISTS。
+第二題，對每份進行中的問卷問一次，ming 有沒有填過？沒有的話就留下來。進行中的是問卷 2、3、6，ming 填過 2 和 6，所以只剩下新品口味調查。
 
-外層用 `LIKE '%iPhone%'` 篩選名稱包含 iPhone 的商品。再用 EXISTS 檢查，訂單明細裡有沒有這個商品的記錄。有的話，代表它被下單過，就保留下來。
+第三題，兩個 EXISTS 用 AND 連接，各自判斷有沒有作答、有沒有必填題。結果是問卷 1、2、3、6。
 
-執行後，就會得到所有曾經賣出過的 iPhone 商品。
+EXISTS 只要找到一筆就會停止，所以很適合只想確認存不存在的情境。
 -->
 
 ---
@@ -751,37 +762,26 @@ layout: default
 ---
 
 # 練習 2：任務說明
-### NOT IN 的 NULL 陷阱驗證
+### NOT IN 的 NULL 陷阱：真實的問卷資料
 
-請用 SQL 驗證 NOT IN 的 NULL 陷阱：
-
-```sql
--- 建立測試資料
-INSERT INTO customers (name, email) VALUES
-  ('Alice', 'alice@test.com'),
-  ('Bob',   'bob@test.com'),
-  ('Carol', 'carol@test.com');
-
-INSERT INTO orders (customer_id, amount, status, order_date) VALUES
-  (1, 500, 'completed', '2024-01-01'),
-  (NULL, 300, 'completed', '2024-01-02');  -- 故意插入 NULL
-```
+問卷允許**訪客免登入**作答，所以 `survey_responses.user_id` 裡有 `NULL`。這正好會踩到 `NOT IN` 的陷阱，請親手驗證：
 
 **任務：**
-1. 執行 `WHERE id NOT IN (SELECT customer_id FROM orders)` 並觀察結果
-2. 改用 `NOT EXISTS` 版本，比較兩個結果的差異
-3. 說明為什麼 NOT IN 版本找不到 Carol（id=3）
+1. 找出**從未填寫過問卷的會員**，先用 `WHERE id NOT IN (SELECT user_id FROM survey_responses)` 寫寫看
+2. 改用 `NOT EXISTS` 與 `LEFT JOIN ... IS NULL` 版本，比較結果
+3. 說明為什麼 `NOT IN` 版本找不到「管理員」（`id = 1`）
+4. 如果一定要用 `NOT IN`，該怎麼修正？
 
 <!--
-第二題，我們要親手驗證 NOT IN 的 NULL 陷阱。
+剛才我們學過 NOT IN 的 NULL 陷阱，這題就在問卷資料上親手驗證。不用另外造假資料，因為範例資料裡本來就有訪客作答，`user_id` 是 NULL。
 
-畫面上先準備測試資料，三位顧客 Alice、Bob、Carol，以及兩筆訂單，第一筆屬於 Alice，第二筆故意把 `customer_id` 設成 NULL。
+請大家用三種寫法找出沒填過問卷的會員，比較結果有什麼不同。
 
-任務有三個。先執行 NOT IN 的查詢，觀察結果。再改用 NOT EXISTS，比較兩者的差別。最後說明，為什麼 NOT IN 的版本找不到 Carol。
+思考一下，`NOT IN` 的清單裡有 NULL 時，條件會展開成什麼樣子？
 
-我們先暫停一下，自己跑跑看。
+我們先暫停一下，自己動手試試看。
 
-【講師】本章的 orders 表 customer_id 設了 NOT NULL，插入 NULL 會失敗。驗證前請先執行 `ALTER TABLE orders MODIFY customer_id INT NULL`。
+【講師】給大家十分鐘，可以請同學先預測三種寫法的結果。
 -->
 
 ---
@@ -792,40 +792,34 @@ layout: default
 
 ```sql
 -- NOT IN 版本（有 NULL 陷阱，結果為空）
-SELECT id, name FROM customers
-WHERE id NOT IN (
-  SELECT customer_id FROM orders
-);
--- 結果：空（因為子查詢含 NULL）
+SELECT id, name FROM users
+WHERE id NOT IN (SELECT user_id FROM survey_responses);
 
--- NOT EXISTS 版本（正確結果：Carol）
-SELECT id, name FROM customers c
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders o
-  WHERE o.customer_id = c.id
-);
--- 結果：Carol（id=3），因為她沒有訂單
+-- NOT EXISTS 版本（正確：管理員）
+SELECT id, name FROM users u
+WHERE NOT EXISTS (SELECT 1 FROM survey_responses r
+                  WHERE r.user_id = u.id);
 
--- LEFT JOIN + IS NULL 版本（同樣正確）
-SELECT c.id, c.name
-FROM customers c
-LEFT JOIN orders o ON c.id = o.customer_id
-WHERE o.id IS NULL;
--- 結果：Carol（id=3）
+-- LEFT JOIN + IS NULL 版本（正確：管理員）
+SELECT u.id, u.name
+FROM users u
+LEFT JOIN survey_responses r ON r.user_id = u.id
+WHERE r.id IS NULL;
+
+-- 修正 NOT IN：子查詢排除 NULL
+SELECT id, name FROM users
+WHERE id NOT IN (SELECT user_id FROM survey_responses
+                 WHERE user_id IS NOT NULL);
 ```
 
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>結論：</b>NOT IN 子查詢回傳的清單含 NULL 時，整個 NOT IN 條件失效。生產環境建議用 NOT EXISTS 或 LEFT JOIN + IS NULL。
-</div>
-
 <!--
-我們來看結果。NOT IN 版本回傳空的，NOT EXISTS 和 LEFT JOIN 加 IS NULL 都正確找到了 Carol。
+第一個版本查不到任何資料，後面三個版本都正確找到管理員。
 
-NOT IN 失敗的原因是，子查詢回傳了一和 NULL。條件展開後，變成 id 不等於一，而且 id 不等於 NULL。跟 NULL 比較的結果既不是真也不是假，所以對任何顧客，整個條件都不成立，一筆都回傳不了。
+原因是 NOT IN 會展開成一連串的不等於，其中包含不等於 NULL。和 NULL 比較的結果既不是真也不是假，整個條件就不會成立，所以一筆都查不到。
 
-NOT EXISTS 不受影響，因為它對 Carol 只會去找屬於 Carol 的訂單。找不到，條件就成立。那筆 NULL 的訂單，完全不影響對 Carol 的判斷。
+NOT EXISTS 不受影響，因為它只看有沒有符合的紀錄。
 
-這是面試和實務上都很常遇到的知識點，親手驗證過一次，就不容易忘了。
+修正的方法是在子查詢排除 NULL，但這要靠寫的人記得，所以還是優先用 NOT EXISTS。
 -->
 
 ---

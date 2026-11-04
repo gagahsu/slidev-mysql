@@ -364,32 +364,25 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 查詢訂單與顧客資訊
+### 動態問卷：後台「問卷回饋」的查詢
 
-使用以下資料表：
-
-```sql
--- customers (id, name, email)
--- orders (id, customer_id, amount, status, order_date)
--- products (id, name, price, category)
--- order_items (order_id, product_id, quantity)
-```
+使用 `dynamic_survey` 資料庫。後台要列出某份問卷的所有作答，點進去還要看細節：
 
 **任務：**
-1. 查詢所有 `completed` 狀態訂單，顯示顧客姓名、訂單金額（用 INNER JOIN）
-2. 查詢**從未下過訂單**的顧客名單（用 LEFT JOIN + IS NULL）
-3. 查詢每筆訂單包含的商品名稱（需要 JOIN 三張表）
+1. 列出問卷 2 的所有作答，顯示問卷標題、作答者姓名、Email、送出時間，依填寫編號**倒序**（INNER JOIN）
+2. 找出**還沒有任何人作答**的問卷（LEFT JOIN + IS NULL）
+3. 作答紀錄 4 的細節頁：顯示每一題的題目與答案，依題目順序排列
 
 <!--
-第一題，我們有顧客、訂單、商品和訂單明細四張表。
+這一題對應後台的兩個頁面，問卷回饋的列表頁和細節頁。
 
-任務有三個，難度逐漸增加。第一個是查出所有完成狀態的訂單，顯示顧客姓名和金額。第二個是找出從來沒下過訂單的顧客。第三個是查出每筆訂單包含了哪些商品，這需要串起三張表。
+第一題是基本的 INNER JOIN，把作答和問卷接起來，最新的排在最上面。第二題要找出左表有、右表沒有的資料。第三題則是細節頁要顯示的內容。
 
-想想看，訂單和商品之間沒有直接的欄位相連，那要經過哪一張表才能把它們接起來？
+思考一下，第三題為什麼要 JOIN `questions`？只查 `response_answers` 不行嗎？
 
-我們先暫停一下，自己寫寫看。
+我們先暫停一下，自己動手寫寫看。
 
-【講師】給大家十分鐘，可以提示多個 JOIN 子句可以連續寫下去。
+【講師】給大家十分鐘，範例資料如果被改過，可以依序重新執行 `sql/schema.sql` 和 `sql/seed.sql`。
 -->
 
 ---
@@ -399,38 +392,34 @@ layout: default
 # 練習 1：解題提示
 
 ```sql
--- 題一：completed 訂單 + 顧客名稱
-SELECT c.name, o.amount, o.order_date
-FROM customers c
-INNER JOIN orders o ON c.id = o.customer_id
-WHERE o.status = 'completed'
-ORDER BY o.order_date DESC;
+-- 1. 問卷 2 的作答列表，最新的在最上面
+SELECT s.title, r.id AS response_id, r.name,
+       r.email, r.submitted_at
+FROM survey_responses r
+INNER JOIN surveys s ON s.id = r.survey_id
+WHERE s.id = 2
+ORDER BY r.id DESC;
 
--- 題二：從未下訂的顧客
-SELECT c.name, c.email
-FROM customers c
-LEFT JOIN orders o ON c.id = o.customer_id
-WHERE o.id IS NULL;
+-- 2. 還沒有人作答的問卷
+SELECT s.id, s.title
+FROM surveys s
+LEFT JOIN survey_responses r ON r.survey_id = s.id
+WHERE r.id IS NULL;
 
--- 題三：訂單包含的商品（三表 JOIN）
-SELECT o.id AS order_id, p.name AS product_name,
-       oi.quantity, p.price
-FROM orders o
-INNER JOIN order_items oi ON o.id = oi.order_id
-INNER JOIN products p    ON oi.product_id = p.id
-ORDER BY o.id, p.name;
+-- 3. 作答 4 的細節（題目 + 答案）
+SELECT q.order_index, q.title AS question, a.answer_text
+FROM response_answers a
+INNER JOIN questions q ON q.id = a.question_id
+WHERE a.response_id = 4
+ORDER BY q.order_index;
 ```
 
 <!--
-我們來看解答。
+第一題結果有四筆，編號最大的李佳蓉排在最上面。
 
-第一題是基本的 INNER JOIN，用顧客 id 對上訂單的 customer_id，再用 WHERE 篩選狀態是 completed 的訂單，執行後依日期由新到舊列出。
+第二題用 LEFT JOIN 保留所有問卷。沒有作答的問卷，右邊的欄位都是 NULL，再用 `r.id IS NULL` 把它們挑出來。結果是問卷 4 和 5。
 
-第二題就是剛才學的技巧，LEFT JOIN 保留所有顧客，再用 `WHERE o.id IS NULL` 留下沒有訂單的人。
-
-第三題回答了剛才的問題。訂單和商品要透過訂單明細 `order_items` 接起來。先用 `order_id` 把訂單接到明細，再用 `product_id` 把明細接到商品，兩個 INNER JOIN 連續寫下去就可以了。
-
-多表 JOIN 時，每個欄位前面都要加上表的別名。
+第三題回答剛才的思考題。`response_answers` 只有題目編號，沒有題目文字，所以要 JOIN `questions`。結果有三列，其中多選題的答案是青菜分號滷蛋，顯示時由前端拆開。
 -->
 
 ---
@@ -438,29 +427,27 @@ layout: default
 ---
 
 # 練習 2：任務說明
-### 顧客消費統計
-
-使用本章的 `customers` 與 `orders` 範例資料表：
-
-```sql
--- customers (id, name)
--- orders (id, customer_id, amount)
-```
+### 動態問卷：統計與填寫紀錄
 
 **任務：**
-1. 列出**每一位**顧客的姓名、訂單筆數、消費總金額（沒下過訂單的顧客也要出現）
-2. 把本章的 RIGHT JOIN 範例，改寫成結果相同的 LEFT JOIN
+1. 後台統計：單選題「最喜歡的校園活動」（題目 4）列出**每個選項**被選的次數，**沒人選的選項也要出現**，次數顯示 0
+2. 後台列表：列出每份問卷的作答人數，**沒人作答的問卷也要出現**，依人數由多到少排序
+3. 會員中心：列出每位會員填寫過的問卷標題與送出時間，**沒填過的會員也要出現**
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>提示：</b>想想看每一題的左表應該是誰。要計算次數時，<code>COUNT(*)</code> 和 <code>COUNT(欄位)</code> 的結果一樣嗎？
+</div>
 
 <!--
-第二題，我們回到本章的顧客和訂單資料，做一份消費統計。
+第二題的三個查詢，有一個共同點，都要求沒有對應資料的那一方也要出現，這正是 LEFT JOIN 的強項。
 
-任務有兩個。第一個是列出每位顧客的姓名、訂單筆數和消費總金額，沒下過訂單的顧客也要出現。這需要把 JOIN 和第五章學的 GROUP BY 結合起來。第二個是把 RIGHT JOIN 的範例改寫成 LEFT JOIN，而且結果要一樣。
+關鍵是選對左表。例如要列出所有選項，就要以 `options` 當左表，如果反過來以答案為主，沒人選的選項就不見了。
 
-想想看，第一題如果用 INNER JOIN，Bob 和 Carol 會怎麼樣？
+思考一下，沒有對應資料的時候，`COUNT(*)` 和 `COUNT(a.id)` 算出來的結果一樣嗎？
 
-我們先暫停一下，動手試試看。
+我們先暫停一下，自己動手試試看。
 
-【講師】給大家十分鐘，可以提醒 GROUP BY 放在 JOIN 和 WHERE 之後。
+【講師】給大家十分鐘，可以先請同學說說三題的左表各是哪一張。
 -->
 
 ---
@@ -470,34 +457,57 @@ layout: default
 # 練習 2：解題提示
 
 ```sql
--- 題一：每位顧客的訂單筆數與總金額
-SELECT
-  c.name        AS customer_name,
-  COUNT(o.id)   AS order_count,
-  SUM(o.amount) AS total_amount
-FROM customers c
-LEFT JOIN orders o ON c.id = o.customer_id
-GROUP BY c.id, c.name
-ORDER BY order_count DESC;
+-- 1. 單選題各選項次數（LEFT JOIN 保留 0 次的選項）
+SELECT o.label, COUNT(a.id) AS votes
+FROM options o
+LEFT JOIN response_answers a
+       ON a.question_id = o.question_id
+      AND a.answer_text = o.label
+WHERE o.question_id = 4
+GROUP BY o.id, o.label, o.order_index
+ORDER BY o.order_index;
+```
 
--- 題二：RIGHT JOIN 改寫成 LEFT JOIN（交換兩張表的位置）
-SELECT
-  c.name       AS customer_name,
-  o.id         AS order_id,
-  o.amount     AS order_amount
-FROM orders o
-LEFT JOIN customers c ON c.id = o.customer_id
-ORDER BY o.id;
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>結果：</b>運動會 1、園遊會 2、<b>音樂祭 0</b>。答案的比對條件要放在 <code>ON</code>，放到 <code>WHERE</code> 的話，音樂祭就會消失。
+</div>
+
+<!--
+`options` 是左表，所以每個選項至少出現一次。這也回答了剛才的思考題，沒有對應答案時，`a.id` 是 NULL，`COUNT(a.id)` 不算它，結果就是零。如果寫成 `COUNT(*)`，會把這一列算成一，答案就錯了。
+
+另外，比對答案的條件要放在 ON。放到 WHERE 的話，NULL 那一列會被刷掉，音樂祭就消失了。
+
+多選題的答案串成字串，比對比較麻煩，後端課程再處理。
+-->
+
+---
+layout: default
+---
+
+# 練習 2：解題提示（續）
+
+```sql
+-- 2. 每份問卷的作答人數（含 0 人）
+SELECT s.id, s.title, COUNT(r.id) AS response_count
+FROM surveys s
+LEFT JOIN survey_responses r ON r.survey_id = s.id
+GROUP BY s.id, s.title
+ORDER BY response_count DESC, s.id;
+
+-- 3. 每位會員的填寫紀錄（含沒填過的會員）
+SELECT u.name, s.title, r.submitted_at
+FROM users u
+LEFT JOIN survey_responses r ON r.user_id = u.id
+LEFT JOIN surveys s ON s.id = r.survey_id
+ORDER BY u.id, r.submitted_at DESC;
 ```
 
 <!--
-我們來看解答。
+第二題的寫法和剛才一樣，以 `surveys` 當左表，用 `COUNT(r.id)` 計算。問卷 4 和 5 沒有人作答，人數就顯示零。
 
-第一題要保留所有顧客，所以用 LEFT JOIN，再用 `GROUP BY` 把同一位顧客的訂單分成一組。這也回答了剛才的問題，用 INNER JOIN 的話，Bob 和 Carol 沒有訂單，就會整個消失。
+第三題要接兩次 LEFT JOIN。第二個如果寫成 INNER JOIN，沒填過問卷的會員又會被刷掉。
 
-這裡有個細節，筆數要用 `COUNT(o.id)`，不要用 `COUNT(*)`。沒有訂單的顧客，訂單欄位都是 NULL，`COUNT(o.id)` 會算出零。用 `COUNT(*)` 會把那一列也算進去，變成一。執行後，Alice 有兩筆，總金額八百，Bob 和 Carol 是零筆，總金額顯示 NULL。
-
-第二題只要把兩張表交換位置，從訂單表出發，再 LEFT JOIN 顧客表，結果就和 RIGHT JOIN 完全一樣。
+執行後，管理員沒填過問卷，所以問卷標題和送出時間都是 NULL。王小明有三筆紀錄，林美玲有兩筆，訪客因為沒有會員資料，不會出現在這裡。
 -->
 
 ---

@@ -514,68 +514,223 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 建立圖書館資料庫
+### 建立動態問卷資料庫（schema.sql）
 
-請建立一個圖書館管理系統的資料庫結構，包含：
+上一章我們設計好了六張表，現在要把它變成能實際執行的 `schema.sql`：
 
-- `books`（書籍）：書名（必填）、ISBN（唯一）、出版年份、頁數、價格（DECIMAL）
-- `authors`（作者）：姓名（必填）、國籍
-- `members`（會員）：姓名（必填）、email（唯一）、加入日期（預設今天）
-- `borrowings`（借閱記錄）：哪個會員借了哪本書、借閱日期、歸還日期
-
-**任務：** 用 CREATE TABLE 寫出所有表格，設定適當的主鍵、外鍵和條件約束。
+**任務：**
+1. 建立資料庫 `dynamic_survey`（字元集 `utf8mb4`）
+2. 依上一章的設計建立六張表（完整欄位見 `SURVEY-SPEC.md` §3）
+3. 用**條件約束**保證資料品質：
+   - `questions.type` 只能是 `SINGLE`、`MULTI`、`TEXT`
+   - `surveys` 的結束日期不可早於開始日期
+   - `users.role` 只能是 `USER`、`ADMIN`
+   - `survey_responses` 的 `(survey_id, email)` 不可重複
+4. 所有資料表使用 InnoDB，注意建表順序
 
 <!--
-第一題，我們來建立一個圖書館的資料庫。需要四張表：書籍、作者、會員，以及借閱記錄，每張表要記錄的欄位都列在畫面上了。
+上一章我們畫好了設計圖，這一題要把它真正蓋起來。之後的章節都會用到這個資料庫，所以請把結果存成 `schema.sql`。
 
-請大家用 `CREATE TABLE` 寫出所有表格，設定好主鍵、外鍵和條件約束。
+除了建立六張表，還要用這一章學的約束，把資料品質的規則放進資料庫。
 
-有幾個地方可以先想想。作者和書是一對多，外鍵要放在哪裡？借閱記錄連接會員和書，它的主鍵該怎麼設計？還有，書還沒還的時候，歸還日期要填什麼？
+思考一下，六張表要用什麼順序建立？被參照的表要先存在，所以誰應該排最前面？
 
-我們先暫停一下，動手寫寫看。
+我們先暫停一下，自己動手寫寫看。
 
-【講師】給大家十到十五分鐘，可以提醒注意建表的順序。
+【講師】給大家十五分鐘，寫完可以直接執行，確認每張表都建立成功。
 -->
 
 ---
 layout: default
 ---
 
-# 練習 1：解題提示
+# 練習 1：解題提示（Part 1）
+
+`users` 和 `surveys` 不參照別人，可以最先建立：
 
 ```sql
-CREATE TABLE authors (id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL, nationality VARCHAR(50)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE DATABASE IF NOT EXISTS dynamic_survey
+  DEFAULT CHARACTER SET utf8mb4;
+USE dynamic_survey;
 
-CREATE TABLE books (id INT AUTO_INCREMENT PRIMARY KEY,
-  title VARCHAR(300) NOT NULL, isbn VARCHAR(20) UNIQUE,
-  publish_year YEAR, pages INT, price DECIMAL(8,2),
-  author_id INT NOT NULL,
-  FOREIGN KEY (author_id) REFERENCES authors(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE members (id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL, email VARCHAR(255) NOT NULL UNIQUE,
-  joined_date DATE NOT NULL DEFAULT (CURRENT_DATE)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE borrowings (id INT AUTO_INCREMENT PRIMARY KEY,
-  member_id INT NOT NULL, book_id INT NOT NULL,
-  borrow_date DATE NOT NULL, return_date DATE,
-  FOREIGN KEY (member_id) REFERENCES members(id),
-  FOREIGN KEY (book_id) REFERENCES books(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE users (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(50) NOT NULL,
+  email      VARCHAR(100) NOT NULL UNIQUE,
+  password   VARCHAR(100) NOT NULL,
+  phone      VARCHAR(20),
+  role       VARCHAR(10) NOT NULL DEFAULT 'USER',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_users_role
+    CHECK (role IN ('USER', 'ADMIN'))
+) ENGINE=InnoDB;
 ```
 
 <!--
-我們來看解答。建表順序上，`authors` 要先建，因為 `books` 要參照它，外鍵 `author_id` 放在多的那邊，也就是書。
+我們來看解答。先回答順序的問題，`users` 和 `surveys` 不參照任何人，所以排最前面。
 
-`books` 的 `isbn` 加了 `UNIQUE`，確保不重複。`members` 的加入日期用了 `DEFAULT (CURRENT_DATE)`。這裡的括號是必要的，MySQL 8.0.13 之後，欄位預設值才能用函式，而且要用括號包起來。
+`users` 的 `role` 加上 CHECK 約束，只接受兩個值。不管是程式寫錯還是有人手動輸入，都不會出現其他的角色名稱。
 
-借閱記錄的 `return_date` 沒有加 `NOT NULL`。書還沒還的時候，歸還日期就是 NULL，這很合理。
+執行之後，資料庫和第一張表就建立好了。
+-->
 
-另外要注意，`borrowings` 用了自己的 `id` 當主鍵，而不是會員加書的複合主鍵。因為同一個會員可能借同一本書很多次，用複合主鍵的話，第二次借就存不進去了。
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 1 續）
+
+```sql
+CREATE TABLE surveys (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  title       VARCHAR(50) NOT NULL,
+  description VARCHAR(300),
+  start_date  DATE NOT NULL,
+  end_date    DATE NOT NULL,
+  published   TINYINT NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_survey_dates
+    CHECK (end_date >= start_date)
+) ENGINE=InnoDB;
+```
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>資料庫是最後一道防線：</b>程式和前端也會檢查日期，但就算有人繞過程式直接寫資料庫，CHECK 一樣會擋下來。
+</div>
+
+<!--
+`surveys` 的重點是這個 CHECK 約束，結束日期不可以早於開始日期。
+
+程式和前端當然也會檢查，那為什麼資料庫還要再檢查一次？因為資料庫是最後一道防線，就算有人繞過程式直接寫入，也會被擋下來。
+
+要注意的是，CHECK 約束需要 MySQL 8.0.16 以上才會真的生效，舊版本只會略過。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 2）
+
+接著建立題目與選項，先從 `questions` 開始：
+
+```sql
+CREATE TABLE questions (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  survey_id   INT NOT NULL,
+  title       VARCHAR(200) NOT NULL,
+  type        VARCHAR(10) NOT NULL,
+  required    TINYINT NOT NULL DEFAULT 0,
+  order_index INT NOT NULL,
+  INDEX idx_questions_survey (survey_id),
+  CONSTRAINT chk_question_type
+    CHECK (type IN ('SINGLE', 'MULTI', 'TEXT')),
+  FOREIGN KEY (survey_id) REFERENCES surveys(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+```
+
+<!--
+接著是題目。題目參照問卷，所以要等 `surveys` 建好之後才能建立。
+
+`type` 用 CHECK 限制只能是三種題型，這樣就不會出現小寫的 single，或其他打錯的值。
+
+外鍵加上 `ON DELETE CASCADE`，問卷刪掉時，底下的題目也會一起刪除。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 2 續）
+
+```sql
+CREATE TABLE options (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  question_id INT NOT NULL,
+  label       VARCHAR(100) NOT NULL,
+  order_index INT NOT NULL,
+  INDEX idx_options_question (question_id),
+  FOREIGN KEY (question_id) REFERENCES questions(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+```
+
+<!--
+選項參照題目，所以排在題目後面。
+
+`options` 不是保留字，可以直接當表名。如果某些圖形化工具把它標成關鍵字，用反引號包起來就可以了。
+
+執行之後，問卷、題目和選項這三層就串起來了。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 3）
+
+最後建立作答紀錄與每一題的答案：
+
+```sql
+CREATE TABLE survey_responses (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  survey_id    INT NOT NULL,
+  user_id      INT,
+  name         VARCHAR(50) NOT NULL,
+  phone        VARCHAR(20) NOT NULL,
+  email        VARCHAR(100) NOT NULL,
+  age          INT,
+  submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_survey_email (survey_id, email),
+  CONSTRAINT chk_response_age
+    CHECK (age IS NULL OR age BETWEEN 1 AND 120),
+  FOREIGN KEY (survey_id) REFERENCES surveys(id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB;
+```
+
+<!--
+作答紀錄同時參照問卷和會員，所以要等這兩張表都建好。
+
+`(survey_id, email)` 用複合唯一約束，保證同一個 Email 不能重複填同一份問卷。
+
+年齡是選填，所以 CHECK 寫成可以是 NULL，或是介於一到一百二十之間。這樣沒填年齡的人可以正常送出，填了不合理的年齡才會被擋下來。
+-->
+
+---
+layout: default
+---
+
+# 練習 1：解題提示（Part 3 續）
+
+```sql
+CREATE TABLE response_answers (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  response_id INT NOT NULL,
+  question_id INT NOT NULL,
+  answer_text VARCHAR(500),
+  INDEX idx_answers_response (response_id),
+  INDEX idx_answers_question (question_id),
+  FOREIGN KEY (response_id) REFERENCES survey_responses(id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES questions(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+```
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>建表順序：</b><code>users</code>、<code>surveys</code>、<code>questions</code>、<code>options</code>、<code>survey_responses</code>、<code>response_answers</code>。要重來時，反過來 DROP。
+</div>
+
+<!--
+最後一張表參照作答紀錄和題目，所以排在最後面。
+
+整理一下完整的順序，先是會員和問卷，再來是題目、選項，接著是作答紀錄，最後是答案。要重來的時候，刪除順序剛好相反。
+
+把這些語法存成 `schema.sql`，就可以一次建立整個資料庫。課程也附了一份 `sql/schema.sql`，大家可以對照看看。
 -->
 
 ---
@@ -583,28 +738,37 @@ layout: default
 ---
 
 # 練習 2：任務說明
-### 修改現有結構
+### 修改現有結構（需求變更）
 
-假設 `products` 表已建立，現在有以下新需求：
+請在練習用的資料庫 `ch04_practice` 建立第一版的 `surveys`，再依新需求修改：
 
-1. 新增一個 `description TEXT` 欄位
-2. `price` 欄位需要確保值大於 0（使用 CHECK 約束）
-3. `category` 欄位改名為 `product_category`
-4. 新增一個 `(product_category, is_active)` 複合索引提升查詢效率
+```sql
+CREATE TABLE surveys (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  title      VARCHAR(50) NOT NULL,
+  start_date DATE NOT NULL,
+  end_date   DATE NOT NULL,
+  enabled    TINYINT NOT NULL DEFAULT 0,
+  temp_note  VARCHAR(100)
+) ENGINE=InnoDB;
+```
+
+1. 把 `enabled` 改名為 `published`
+2. 新增 `created_at DATETIME`，預設為建立當下的時間
+3. 新增 `(published, start_date, end_date)` 複合索引
+4. `title` 不可為空字串（提示：`CHECK (CHAR_LENGTH(title) > 0)`）
 5. 刪除暫時用的 `temp_note` 欄位
 
-**任務：** 寫出對應的 ALTER TABLE 語句（可一次執行完所有修改）。
-
 <!--
-第二題是修改結構。假設 `products` 已經建好了，現在來了五個新需求：新增描述欄位、價格必須大於零、改欄位名稱、加一個複合索引，以及刪掉一個暫時用的欄位。
+第二題的情境很常見，專案做到一半，需求改了。第一版把發佈欄位叫做 `enabled`，還留著一個暫時用的欄位。
 
-請大家用 `ALTER TABLE` 完成這些修改。
+請大家先建立第一版的資料表，再用 ALTER TABLE 完成這五個修改。
 
-這裡有一個思考題：這五個修改，能不能合併成一個語句？合併有什麼好處？
+思考一下，這五個修改一定要分成五句執行嗎？能不能寫在同一個 ALTER TABLE 裡？
 
-我們先暫停一下，自己寫寫看。
+我們先暫停一下，自己動手試試看。
 
-【講師】給大家五到十分鐘，可以請同學比較分開寫和合併寫的差別。
+【講師】給大家十分鐘，提醒同學在 `ch04_practice` 練習，不要動到 `dynamic_survey`。
 -->
 
 ---
@@ -613,38 +777,31 @@ layout: default
 
 # 練習 2：解題提示
 
+五個修改可以合併在同一個 `ALTER TABLE`：
+
 ```sql
--- 方式一：分開執行（每個操作獨立）
-ALTER TABLE products ADD COLUMN description TEXT;
-
-ALTER TABLE products
-  ADD CONSTRAINT chk_price CHECK (price > 0);
-
-ALTER TABLE products
-  RENAME COLUMN category TO product_category;
-
-ALTER TABLE products
-  ADD INDEX idx_category_active (product_category, is_active);
-
-ALTER TABLE products DROP COLUMN temp_note;
-
--- 方式二：合併執行（推薦，對大型表效率更高）
-ALTER TABLE products
-  ADD COLUMN description TEXT,
-  ADD CONSTRAINT chk_price CHECK (price > 0),
-  RENAME COLUMN category TO product_category,
-  ADD INDEX idx_category_active (product_category, is_active),
+ALTER TABLE surveys
+  RENAME COLUMN enabled TO published,
+  ADD COLUMN created_at DATETIME NOT NULL
+    DEFAULT CURRENT_TIMESTAMP,
+  ADD INDEX idx_pub_dates (published, start_date, end_date),
+  ADD CONSTRAINT chk_title_not_empty
+    CHECK (CHAR_LENGTH(title) > 0),
   DROP COLUMN temp_note;
 ```
 
+<div class="mt-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 text-gray-700 text-sm text-left">
+⚠️ <b>新增 CHECK 時，MySQL 會檢查現有資料。</b>如果已經有空字串的標題，ALTER 會直接失敗，要先修正舊資料再加約束。
+</div>
+
 <!--
-解答提供了兩種寫法。方式一是每個修改各寫一個 `ALTER TABLE`，方式二是全部合併成一個。
+答案是可以合併。分開寫也能完成，不過對大型資料表來說，每次 ALTER 都可能花上不少時間，合併執行通常比較有效率。
 
-兩種都能達成目的，但推薦方式二。這也回答了剛才的思考題：在大型資料表上，每次 ALTER 都可能重建整張表。分開執行五次，就重建五次，合併只要重建一次。
+執行後，欄位名稱改好了，也多了 `created_at` 和索引。這時候如果新增空字串的標題，CHECK 就會擋下來。
 
-另外有兩個版本相關的地方。`CHECK` 約束要 MySQL 8.0.16 以上才會真正生效，舊版雖然不報錯，但完全不會檢查。`RENAME COLUMN` 也要 8.0 以上，舊版要改用 `CHANGE COLUMN`，並且重新指定型別。
+要注意的是，加上 CHECK 時，MySQL 也會檢查已經存在的資料。只要有一筆不符合，整個 ALTER 就會失敗，所以實務上要先修正舊資料。
 
-執行後，商品表就會有新的欄位、價格檢查和索引，暫時欄位也被移除了。
+至於索引的欄位順序為什麼這樣排，到索引那一章會再說明。
 -->
 
 ---

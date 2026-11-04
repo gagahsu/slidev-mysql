@@ -471,37 +471,30 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 完整的 CRUD 操作
+### 動態問卷：後台的新增、發佈與刪除
 
-以下是 `students` 表（學生表），請完成四個操作：
-
-```sql
-CREATE TABLE students (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  name       VARCHAR(100) NOT NULL,
-  email      VARCHAR(255) NOT NULL UNIQUE,
-  score      DECIMAL(5,2),
-  is_active  TINYINT(1) NOT NULL DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
+請重新執行 `sql/schema.sql` 與 `sql/seed.sql` 重置資料，再模擬管理員的操作：
 
 **任務：**
-1. 批次新增三位學生
-2. 把 score < 60 的學生的 is_active 設為 0
-3. 刪除 email 為 'test@example.com' 的學生（先 SELECT 確認再 DELETE）
-4. 查詢目前仍在學（is_active=1）且 score >= 80 的學生，按 score 降冪排列
+1. 新增問卷「社團博覽會意見調查」，開始日期為今天 + 2、結束日期為今天 + 7，先不發佈
+2. 批次新增兩個題目：「你會參加嗎？」（單選、必填）、「其他建議」（文字）
+3. 按下「儲存並發佈」：把這份問卷的 `published` 改成 1
+4. 管理員勾選了問卷 2、4、5 要刪除，但只有未發佈或尚未開始的問卷可以刪。先 SELECT 確認，再 DELETE
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>提示：</b><code>DATE_ADD(CURDATE(), INTERVAL 2 DAY)</code> 算出兩天後；<code>SET @sid = LAST_INSERT_ID();</code> 記下剛新增的 id。
+</div>
 
 <!--
-第一題是完整的增刪改查練習，使用畫面上這張 `students` 學生表。
+這題模擬管理員在後台的三個動作，新增、發佈和批次刪除。
 
-任務有四個。先一次新增三位學生，再把分數低於六十分的學生設為非在學。接著刪除 email 是 `test@example.com` 的學生，記得先確認再刪除。最後查出還在學、而且分數八十分以上的學生，依分數由高到低排列。
+題目要掛在剛新增的問卷底下，可是 id 是自動產生的，要怎麼知道？畫面上的 `LAST_INSERT_ID` 就能取回它，再存到變數 `@sid` 裡。
 
-這題結合了這一章的新增、修改、刪除，以及上一章的查詢。
+思考一下，問卷 2 也被勾選了，但它正在進行中，不能刪。這個規則要怎麼寫進 DELETE？
 
-我們先暫停一下，動手寫寫看。
+我們先暫停一下，自己動手試試看。
 
-【講師】給大家十分鐘，可以提醒第三題要先 SELECT 再 DELETE。
+【講師】給大家十五分鐘，提醒同學先重置資料，才會和解答的結果一致。
 -->
 
 ---
@@ -511,39 +504,61 @@ layout: default
 # 練習 1：解題提示
 
 ```sql
--- 1. 批次新增三位學生
-INSERT INTO students (name, email, score)
-VALUES
-  ('Alice Chen', 'alice@example.com', 92.5),
-  ('Bob Wang',   'bob@example.com',   75.0),
-  ('Carol Lin',  'carol@example.com', 58.0);
+-- 1. 新增問卷（published 預設就是 0，也就是先不發佈）
+INSERT INTO surveys
+  (title, description, start_date, end_date)
+VALUES ('社團博覽會意見調查', '你對博覽會有什麼想法？',
+        DATE_ADD(CURDATE(), INTERVAL 2 DAY),
+        DATE_ADD(CURDATE(), INTERVAL 7 DAY));
 
--- 2. 把不及格學生設為非在學
-UPDATE students
-SET is_active = 0
-WHERE score < 60 AND is_active = 1;
+-- 2. 記下剛新增的 id，批次新增題目
+SET @sid = LAST_INSERT_ID();
+INSERT INTO questions
+  (survey_id, title, type, required, order_index)
+VALUES (@sid, '你會參加嗎？', 'SINGLE', 1, 1),
+       (@sid, '其他建議',     'TEXT',   0, 2);
 
--- 3. 先確認再刪除
-SELECT * FROM students WHERE email = 'test@example.com';
-DELETE FROM students WHERE email = 'test@example.com';
-
--- 4. 查詢在學且高分學生
-SELECT id, name, score
-FROM students
-WHERE is_active = 1 AND score >= 80
-ORDER BY score DESC;
+-- 3. 儲存並發佈
+UPDATE surveys SET published = 1
+WHERE id = @sid AND published = 0;
 ```
 
 <!--
-我們來看解答。
+第一步沒有寫 `published`，因為它的預設值就是 0，正好是先不發佈。
 
-第一題是批次 INSERT，每一組值用括號包起來，組跟組之間用逗號隔開。`is_active` 和 `created_at` 都有預設值，所以不用給。
+第二步用 `LAST_INSERT_ID` 取回剛產生的 id。它只看自己這條連線，就算別人同時也在新增，也不會拿到別人的 id。
 
-第二題的 UPDATE 用了兩個條件，分數低於六十，而且目前還在學。後面那個條件其實不加也不會錯，但加上之後，只會改到真正需要改的資料，意思也更清楚。
+第三步的 UPDATE 多加了 `published = 0` 的條件。已經發佈過的問卷就不會被重複修改，這也是 UPDATE 一定要寫好 WHERE 的好習慣。
+-->
 
-第三題先用 SELECT 確認這位學生真的存在，看到結果後才 DELETE，這就是我們的安全習慣。
+---
+layout: default
+---
 
-第四題是上一章的技巧，兩個條件用 AND 連接，再用 `ORDER BY score DESC` 讓高分的排在前面。執行後就是一份高分在學學生的名單。
+# 練習 1：解題提示（續）
+
+```sql
+-- 4. 先用同樣的條件 SELECT 確認範圍
+SELECT id, title FROM surveys
+WHERE id IN (2, 4, 5)
+  AND (published = 0 OR CURDATE() < start_date);
+
+-- 確認無誤再 DELETE
+DELETE FROM surveys
+WHERE id IN (2, 4, 5)
+  AND (published = 0 OR CURDATE() < start_date);
+```
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>結果：</b>只有 4（尚未開始）、5（未發佈）被刪，2（進行中）保留。它們的題目也因為 <code>ON DELETE CASCADE</code> 一起消失。
+</div>
+
+<!--
+這就回答了剛才的思考題。把可以刪除的規則直接寫進 WHERE，就算問卷 2 在勾選清單裡，也不會被刪掉。
+
+執行前先用一模一樣的條件 SELECT，確認看到的只有問卷 4 和 5，再執行 DELETE。
+
+規則寫在 SQL 裡還有一個好處，就算有人繞過畫面直接呼叫後端，進行中的問卷一樣刪不掉。
 -->
 
 ---
@@ -551,28 +566,25 @@ layout: default
 ---
 
 # 練習 2：任務說明
-### 安全的大量更新
+### 送出一份作答（Transaction）
 
-你的電商系統要進行「年終折扣活動」：
-
-- 「配件」類別的商品一律打七折
-- 其他類別中，價格超過 10000 的商品打八折
+使用者按下「確認送出」時，要寫入一筆 `survey_responses`，再寫入每一題的答案 `response_answers`。這兩件事必須**同時成功或同時失敗**。
 
 **任務：**
-1. 先在 `products_backup` 備份現有商品（CREATE TABLE ... LIKE + INSERT ... SELECT）
-2. 執行兩個 UPDATE（八折和七折），用 Transaction 包住
-3. 用 SELECT 檢查結果：正確就 COMMIT，發現錯誤就 ROLLBACK
+1. 用 Transaction 為問卷 3 新增一份作答：姓名「周小華」、手機 `0933000011`、Email `a11@example.com`、年齡 22；題目 5 選「芝麻」、題目 6 填「黑芝麻香」
+2. 再用**同一個 Email** 對問卷 3 送出第二次，觀察錯誤訊息，並用 `ROLLBACK` 收尾
+3. 查詢確認：問卷 3 目前有幾份作答、剛才那份有幾筆答案
 
 <!--
-第二題來模擬一個年終折扣活動。配件類商品一律打七折，其他類別中，價格超過一萬的商品打八折。
+第二題是使用者按下確認送出時，資料庫要做的事。作答紀錄和每一題的答案要一起寫入，所以要放進同一個交易。
 
-任務有三步。先把商品表完整備份到 `products_backup`。再用交易包住兩個打折的 UPDATE。最後查詢結果，正確就提交，發現錯誤就取消。
+第二個步驟要故意重複送出，請大家仔細看 MySQL 回報的錯誤訊息。
 
-思考一下，兩個 UPDATE 放在同一個交易裡，有什麼好處？
+思考一下，如果沒有交易，寫完作答紀錄之後，寫入答案時失敗了，資料庫會留下什麼？
 
-我們先暫停一下，自己寫寫看。
+我們先暫停一下，自己動手試試看。
 
-【講師】給大家十分鐘，可以提醒 COMMIT 和 ROLLBACK 只能二選一。
+【講師】給大家十分鐘，可以提示這裡也用得到剛才的 `LAST_INSERT_ID`。
 -->
 
 ---
@@ -582,38 +594,59 @@ layout: default
 # 練習 2：解題提示
 
 ```sql
--- 1. 備份商品表
-CREATE TABLE products_backup LIKE products;
-INSERT INTO products_backup SELECT * FROM products;
-
--- 2. 用 Transaction 執行折扣更新
+-- 1. 一次作答 = 一個 Transaction
 START TRANSACTION;
 
-UPDATE products
-SET price = price * 0.8
-WHERE price > 10000 AND category <> '配件';
+INSERT INTO survey_responses
+  (survey_id, name, phone, email, age)
+VALUES (3, '周小華', '0933000011', 'a11@example.com', 22);
 
-UPDATE products
-SET price = price * 0.7
-WHERE category = '配件';
+SET @rid = LAST_INSERT_ID();
 
--- 3. 檢查結果
-SELECT id, name, category, price FROM products;
+INSERT INTO response_answers
+  (response_id, question_id, answer_text)
+VALUES (@rid, 5, '芝麻'),
+       (@rid, 6, '黑芝麻香');
 
-COMMIT;     -- 結果正確：提交
--- ROLLBACK; -- 發現錯誤：取消兩個 UPDATE
+COMMIT;
 ```
 
 <!--
-我們來看解答。
+`START TRANSACTION` 之後的修改，在 COMMIT 之前都還沒有正式生效。我們先寫入作答紀錄，用 `@rid` 記下它的 id，再把兩筆答案掛上去，最後一起提交。
 
-第一步用 `CREATE TABLE ... LIKE` 建立一張結構相同的空表，再用 `INSERT ... SELECT` 把資料全部複製過去。這是多一層保險，萬一交易提交後才發現問題，還有備份可以參考。
-
-第二步把兩個 UPDATE 放進同一個交易。這就回答了剛才的思考題，兩個修改會被當成一件事，不會出現有些商品打了折、有些沒有的狀況。另外注意第一個 UPDATE 排除了配件，否則超過一萬的配件會被打兩次折。
-
-第三步先 SELECT 檢查價格。結果正確就 COMMIT，修改正式生效。發現打錯折，就 ROLLBACK，兩個 UPDATE 會一起取消，商品價格回到交易開始前的樣子。
+這也回答了剛才的思考題。如果沒有交易，答案寫入失敗時，資料庫就會留下一筆殘缺的紀錄。它有作答者，卻沒有任何答案，後台看到的就是一份空白的作答。
 -->
 
+---
+layout: default
+---
+
+# 練習 2：解題提示（續）
+
+```sql
+-- 2. 同一 Email 重複送出，違反 UNIQUE (survey_id, email)
+START TRANSACTION;
+INSERT INTO survey_responses (survey_id, name, phone, email)
+VALUES (3, '周小華', '0933000011', 'a11@example.com');
+-- ERROR 1062 (23000): Duplicate entry '3-a11@example.com'
+--   for key 'survey_responses.uk_survey_email'
+ROLLBACK;
+
+-- 3. 確認結果
+SELECT COUNT(*) AS response_count
+FROM survey_responses WHERE survey_id = 3;  -- 2
+
+SELECT COUNT(*) AS answer_count
+FROM response_answers WHERE response_id = @rid;  -- 2
+```
+
+<!--
+第二次送出會被唯一約束擋下來，MySQL 回傳錯誤碼 1062。我們用 ROLLBACK 取消這個交易。
+
+程式當然可以先查有沒有填過，但兩個請求同時進來時，可能都查到沒填過。所以實務上兩者並用，程式負責給出友善的提示，資料庫約束當最後一道防線。
+
+最後確認一下，問卷 3 有兩份作答，一份是原本的，一份是周小華的，周小華的作答有兩筆答案。
+-->
 
 ---
 layout: end

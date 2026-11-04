@@ -361,32 +361,25 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 建立報表 VIEW
+### 把「問卷狀態」與「作答人數」封裝成 VIEW
 
-有以下資料表：
-
-```sql
--- orders (id, customer_id, status, amount, order_date)
--- customers (id, name, email)
--- order_items (order_id, product_id, quantity)
--- products (id, name, category, price)
-```
+前台、後台列表都要顯示狀態與作答人數，每個查詢都寫一次太麻煩。請在 `dynamic_survey` 用 VIEW 封裝：
 
 **任務：**
-1. 建立 `monthly_revenue_view`：顯示每月的訂單數量和總收入（只含 `completed` 狀態）
-2. 建立 `top_products_view`：顯示每個商品的總銷售數量，按數量降冪排列
-3. 對 `monthly_revenue_view` 執行查詢，找出 2024 年收入最高的三個月
+1. 建立 `survey_status_view`：`id`、`title`、`start_date`、`end_date`、`published`，以及計算出來的 `status`
+2. 建立 `survey_response_count_view`：每份問卷的 `survey_id`、`title`、`response_count`（沒人作答也要出現，人數為 0）
+3. 結合兩個 VIEW，找出進行中的問卷裡，作答人數最多的前三名
 
 <!--
-第一題，我們用訂單、顧客、訂單明細和商品四張表，建立報表用的 VIEW。
+前台和後台都要顯示問卷狀態和作答人數。之前我們已經寫過這些查詢，這題要把它們包成 VIEW，之後就不用重寫了。
 
-任務有三個。第一，建立 `monthly_revenue_view`，顯示每個月已完成訂單的數量和總收入。第二，建立 `top_products_view`，統計每個商品總共賣出多少件。第三，查詢第一個 VIEW，找出 2024 年收入最高的三個月。
+第一個 VIEW 用的是 DQL 那一章寫過的 CASE。第二個 VIEW 要用 LEFT JOIN，保留沒人作答的問卷。第三個任務，就把兩個 VIEW 當成普通的表來 JOIN。
 
-可以想想看，建好 VIEW 之後，第三個任務的查詢會變得多簡單？
+思考一下，VIEW 裡的狀態，是建立那天就固定了，還是每次查詢才計算？
 
-我們先暫停一下，動手寫寫看。
+我們先暫停一下，自己動手寫寫看。
 
-【講師】給大家十分鐘，可以提醒前兩個任務就是前面 DQL 那一章學過的分組統計。
+【講師】給大家十分鐘，可以請同學先翻出 DQL 那一章的 CASE 解答。
 -->
 
 ---
@@ -396,57 +389,63 @@ layout: default
 # 練習 1：解題提示
 
 ```sql
--- 1. 每月收入 VIEW
-CREATE OR REPLACE VIEW monthly_revenue_view AS
-SELECT
-  YEAR(order_date)   AS year,
-  MONTH(order_date)  AS month,
-  COUNT(*)           AS order_count,
-  SUM(amount)        AS revenue
-FROM orders
-WHERE status = 'completed'
-GROUP BY YEAR(order_date), MONTH(order_date);
-
--- 2. 商品銷售排行 VIEW
-CREATE OR REPLACE VIEW top_products_view AS
-SELECT
-  p.id, p.name, p.category,
-  SUM(oi.quantity) AS total_sold
-FROM products p
-JOIN order_items oi ON p.id = oi.product_id
-GROUP BY p.id, p.name, p.category
-ORDER BY total_sold DESC;
+-- 1. 問卷狀態 VIEW
+CREATE OR REPLACE VIEW survey_status_view AS
+SELECT id, title, start_date, end_date, published,
+  CASE
+    WHEN published = 0          THEN '未發佈'
+    WHEN CURDATE() < start_date THEN '尚未開始'
+    WHEN CURDATE() <= end_date  THEN '進行中'
+    ELSE '已結束'
+  END AS status
+FROM surveys;
 ```
 
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 VIEW 存的是<b>查詢定義</b>，不是資料。<code>CURDATE()</code> 每次查詢都重新計算，狀態永遠跟著今天走。
+</div>
+
 <!--
-我們來看前兩個 VIEW 的解答。
+第一個 VIEW 就是把 CASE 包起來。
 
-`monthly_revenue_view` 先用 WHERE 篩選已完成的訂單，再用 `YEAR` 和 `MONTH` 依年月分組，算出訂單數和收入總和。年和月兩個都要列在 GROUP BY 裡。
+這也回答了剛才的思考題。VIEW 存的是查詢定義，不是資料，所以 `CURDATE()` 是每次查詢時才計算。今天建立的 VIEW，明天查詢，狀態就會跟著明天走，不需要任何排程去更新。
 
-`top_products_view` 把商品表和訂單明細 JOIN 起來，用 `SUM(oi.quantity)` 算出每個商品總共賣了幾件。這裡 SELECT 了商品的編號、名稱和分類，它們都不是聚合函式，所以也都要列在 GROUP BY 裡。
-
-執行後，資料庫裡就多了兩張報表用的虛擬表，可以直接拿來查詢。
+這也是我們當初決定不把狀態存進資料庫的好處。
 -->
 
+---
+layout: default
 ---
 
 # 練習 1：解題提示（續）
 
 ```sql
--- 3. 查詢 VIEW：2024 年收入最高的三個月
-SELECT year, month, revenue
-FROM monthly_revenue_view
-WHERE year = 2024
-ORDER BY revenue DESC
+-- 2. 每份問卷的作答人數（含 0 人）
+CREATE OR REPLACE VIEW survey_response_count_view AS
+SELECT s.id AS survey_id, s.title,
+       COUNT(r.id) AS response_count
+FROM surveys s
+LEFT JOIN survey_responses r ON r.survey_id = s.id
+GROUP BY s.id, s.title;
+
+-- 3. 進行中的問卷，作答人數前三名
+SELECT v.id, v.title, c.response_count
+FROM survey_status_view v
+INNER JOIN survey_response_count_view c
+        ON c.survey_id = v.id
+WHERE v.status = '進行中'
+ORDER BY c.response_count DESC
 LIMIT 3;
 ```
 
 <!--
-第三個任務展示了 VIEW 的便利。複雜的分組邏輯已經包在 VIEW 裡，現在只要從 `monthly_revenue_view` 篩選 2024 年，依收入由高到低排序，取前三筆就好。
+第二個 VIEW 用 LEFT JOIN 保留沒人作答的問卷。`COUNT(r.id)` 不算 NULL，所以問卷 4 和 5 的人數是零。
 
-執行後，就能看到 2024 年收入最高的三個月。
+第三個任務，`status` 已經是 VIEW 裡算好的欄位，外層的 WHERE 可以直接用。這樣就不會有 DQL 那一章別名不能放在 WHERE 的問題。
 
-同樣的需求，如果沒有 VIEW，每次都得把分組統計整段重寫一遍。有了 VIEW，查詢就簡單多了。
+執行結果是午餐偏好調查四人，課程回饋調查兩人，新品口味調查一人。
+
+別忘了，VIEW 是讓查詢更好寫的工具，不是讓查詢變快的工具。
 -->
 
 ---
@@ -454,37 +453,29 @@ layout: default
 ---
 
 # 練習 2：任務說明
-### 安全性 VIEW 設計
+### 用 VIEW 保護作答者的個資
 
-你的公司有一張 `employees` 表：
-
-```sql
-CREATE TABLE employees (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  name       VARCHAR(100) NOT NULL,
-  department VARCHAR(100) NOT NULL,
-  salary     DECIMAL(10,2) NOT NULL,
-  ssn        VARCHAR(20) NOT NULL,
-  manager_id INT,
-  hire_date  DATE NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
+作答紀錄有姓名、手機和 Email，客服和數據分析師不該看到完整資料：
 
 **任務：**
-1. 建立 `public_employees_view`：讓一般員工只能看到 id、name、department（不能看薪資和身份證字號）
-2. 建立 `hr_employees_view`：讓 HR 能看到所有資訊，但 ssn 只顯示後四碼（`****XXXX`）
-3. 說明為什麼這些 VIEW 比直接給查詢權限更安全
+1. 建立 `response_masked_view`（給客服）：`id`、`survey_id`、`name`、遮罩後的手機（`0933***006`）、遮罩後的 Email（`a6***@example.com`）、`age`、`submitted_at`
+2. 建立 `answer_stats_view`（給分析師）：只有 `question_id` 與 `answer_text`
+3. 說明為什麼這些 VIEW 比直接開放資料表權限更安全
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>提示：</b><code>LEFT(欄位, n)</code>、<code>RIGHT(欄位, n)</code> 取前後 n 個字元，<code>CONCAT</code> 串接字串，<code>SUBSTRING_INDEX(email, '@', -1)</code> 取出 @ 後面的網域。
+</div>
 
 <!--
-第二題是設計安全性的 VIEW。這張員工表裡有薪資和身分證字號這些敏感資料。
+第二題換到安全性的應用。作答紀錄裡有手機和 Email，不是每個人都該看到完整的資料。
 
-任務有三個。第一，建立一個給一般員工看的 VIEW，只能看到編號、姓名和部門，看不到薪資和身分證字號。第二，建立一個給人資部門的 VIEW，可以看到所有資訊，但身分證字號只顯示後四碼。第三，說明為什麼用 VIEW 比直接開放資料表權限更安全。
+請大家幫客服建立一個遮罩個資的 VIEW，再幫數據分析師建立一個只有題目編號和答案的 VIEW。字串函式的用法，畫面上都有提示。
 
-可以想想看，要取出字串的最後四個字元，再在前面補上星號，該用哪些函式？
+思考一下，分析師要做統計，真的需要知道每個答案是誰填的嗎？
 
-我們先暫停一下，自己寫寫看。
+我們先暫停一下，自己動手寫寫看。
 
-【講師】給大家十分鐘，可以提示 RIGHT 和 CONCAT 這兩個函式。
+【講師】給大家十分鐘，可以先示範一次 `SUBSTRING_INDEX` 的結果。
 -->
 
 ---
@@ -494,53 +485,56 @@ layout: default
 # 練習 2：解題提示
 
 ```sql
--- 1. 一般員工 VIEW（隱藏薪資和身份證）
-CREATE OR REPLACE VIEW public_employees_view AS
-SELECT
-  id,
-  name,
-  department
-FROM employees;
+-- 1. 遮罩個資（給客服）
+CREATE OR REPLACE VIEW response_masked_view AS
+SELECT id, survey_id, name,
+  CONCAT(LEFT(phone, 4), '***', RIGHT(phone, 3))
+    AS masked_phone,
+  CONCAT(LEFT(email, 2), '***@',
+         SUBSTRING_INDEX(email, '@', -1))
+    AS masked_email,
+  age, submitted_at
+FROM survey_responses;
 
--- 2. HR VIEW（薪資顯示，身份證遮罩）
-CREATE OR REPLACE VIEW hr_employees_view AS
-SELECT
-  id,
-  name,
-  department,
-  salary,
-  CONCAT('****', RIGHT(ssn, 4)) AS masked_ssn,
-  manager_id,
-  hire_date
-FROM employees;
+-- 2. 只有答案，沒有人（給分析師）
+CREATE OR REPLACE VIEW answer_stats_view AS
+SELECT question_id, answer_text
+FROM response_answers;
 ```
 
 <!--
-我們來看前兩個 VIEW。
+第一個 VIEW 用字串函式把個資遮起來。執行後，手機 0933000006 會顯示成前四碼加星號再加後三碼，Email 也只留前兩碼和網域。要注意，遮罩只發生在查詢輸出的時候，資料庫裡存的仍然是完整資料。
 
-`public_employees_view` 很單純，只 SELECT 需要公開的欄位，編號、姓名和部門，完全不包含薪資和身分證字號。
-
-`hr_employees_view` 保留了薪資，身分證字號則用 `CONCAT('****', RIGHT(ssn, 4))` 處理。`RIGHT` 取出最後四碼，`CONCAT` 再在前面接上四個星號。
-
-執行後，人資查到的會是四個星號加上後四碼，知道是哪個人，卻看不到完整的號碼。
+第二個 VIEW 更簡單，只有兩個欄位。這也回答了剛才的思考題，分析師只需要知道哪一題、答了什麼，不需要知道是誰答的。
 -->
 
+---
+layout: default
 ---
 
 # 練習 2：解題提示（續）
 
 ```sql
--- 3. 授予只讀 VIEW 的權限（DCL）
-GRANT SELECT ON company_db.public_employees_view
-  TO 'regular_user'@'%';
+-- 3. 帳號只拿到 VIEW 的權限
+CREATE USER 'support'@'%' IDENTIFIED BY 'change-me';
+CREATE USER 'analyst'@'%' IDENTIFIED BY 'change-me';
+
+GRANT SELECT ON dynamic_survey.response_masked_view
+  TO 'support'@'%';
+GRANT SELECT ON dynamic_survey.answer_stats_view
+  TO 'analyst'@'%';
 ```
 
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>最小權限原則：</b>客服只看得到遮罩後的資料，分析師完全看不到作答者。就算帳號被盜用，外洩範圍也有限。
+</div>
+
 <!--
-第三個任務要說明，為什麼這樣比較安全。
+第三個任務的關鍵在權限。這兩個帳號只拿到 VIEW 的查詢權限，沒有原始資料表的權限，所以繞不過 VIEW。
 
-關鍵在權限。畫面上的 `GRANT SELECT` 只把 `public_employees_view` 的查詢權限給了一般使用者的帳號。就算這個帳號外洩，拿到它的人也只能查這個 VIEW，看不到薪資和身分證。
+這就是最小權限原則，每個使用者只拿到真正需要的權限。就算其中一個帳號外洩，也看不到完整的個資。
 
-這就是「最小權限原則」：每個使用者只拿到他真正需要的權限。
+實際上，我們的 Spring Boot 專案只會用一個帳號連線，所以這裡算是觀念練習。不過報表和客服系統各用不同帳號，在公司裡是很常見的做法。
 -->
 
 ---

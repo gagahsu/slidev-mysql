@@ -292,36 +292,35 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 分析 EXPLAIN 輸出
+### 分析前台問卷列表的 EXPLAIN
 
-以下是一張有 100 萬筆資料的 `orders` 表：
+問卷系統上線一段時間後，`surveys` 累積了 20 萬筆資料，前台列表越來越慢：
 
 ```sql
--- 執行 EXPLAIN
-EXPLAIN SELECT * FROM orders
-WHERE customer_id = 100 AND status = 'completed'
-ORDER BY order_date DESC
+EXPLAIN SELECT id, title, end_date
+FROM surveys
+WHERE published = 1
+  AND CURDATE() BETWEEN start_date AND end_date
+ORDER BY end_date
 LIMIT 10;
-
--- EXPLAIN 輸出（模擬）：
--- key: NULL, rows: 1000000
+-- key: NULL, rows: 199396
 ```
 
 **任務：**
 1. 從 `key` 和 `rows` 說明這個查詢的效能問題
-2. 提出你的索引最佳化方案（寫出 CREATE INDEX）
+2. 提出你的索引方案（寫出 CREATE INDEX）
 3. 說明加索引後 `key` 和 `rows` 預期會有什麼改變
 
 <!--
-第一題，我們來讀一份 EXPLAIN 的結果。這張訂單表有一百萬筆資料，查詢要找出某位顧客已完成的訂單，依日期由新到舊，取前十筆。
+第一題，我們來讀一份 EXPLAIN 的結果。這是在二十萬筆問卷資料上實際跑出來的，查詢要找出進行中的問卷，取最快結束的前十筆。
 
-畫面上模擬了 EXPLAIN 的輸出。請大家從 key 和 rows 說明這個查詢有什麼問題，寫出要建立的索引，並預測加了索引之後，這兩個欄位會怎麼變。
+請大家從 key 和 rows 說明問題在哪裡，寫出要建立的索引，並預測這兩個欄位會怎麼變。
 
-思考一下，WHERE 裡有兩個條件，應該建兩個單欄位的索引，還是一個複合索引？
+思考一下，索引要放哪些欄位？`published` 是等於，`end_date` 除了篩選還要排序，順序該怎麼排？
 
 我們先暫停一下，自己分析看看。
 
-【講師】給大家五到十分鐘，可以請同學先說說看 key 是 NULL 代表什麼。
+【講師】給大家五到十分鐘，可以請同學先說說 key 是 NULL 代表什麼。
 -->
 
 ---
@@ -332,22 +331,23 @@ layout: default
 
 **問題分析：**
 - `key=NULL`：沒有用到任何索引
-- `rows=1000000`：整張表 100 萬筆全部掃一遍
+- `rows=199396`：幾乎把整張表都掃過一遍
 
 **最佳化方案：**
 
 ```sql
--- 建立複合索引：WHERE 的兩個欄位 + ORDER BY 的欄位
-CREATE INDEX idx_cust_status_date
-  ON orders (customer_id, status, order_date);
+-- 等於條件放前面，範圍條件兼排序的欄位放後面
+CREATE INDEX idx_pub_end ON surveys (published, end_date);
 ```
 
 <!--
-我們先看問題分析。key 是 NULL，代表沒有任何索引可用。rows 是一百萬，等於整張表都掃過一遍，只為了找出一位顧客的十筆訂單。
+key 是 NULL，代表沒有索引可用。rows 將近二十萬，等於整張表都掃過一遍，只為了找十筆資料。
 
-最佳化方案是建立一個複合索引，包含 WHERE 用到的兩個欄位，再加上排序用的日期。這也回答了剛才的思考題，兩個條件常常一起出現，用一個複合索引就能同時照顧到。
+最佳化方案是複合索引。這也回答了剛才的思考題，`published` 是等於條件，放第一個。`end_date` 同時用來篩選和排序，放第二個。
 
-欄位順序也有講究。`customer_id` 放第一個，因為每位顧客只佔全部訂單的一小部分，先用它篩選，範圍一下子就縮小了。`status` 放第二個，在這位顧客的訂單裡，再挑出已完成的。`order_date` 放最後，符合條件的訂單在索引裡已經依日期排好，MySQL 從最新的讀起，讀到十筆就能停下來。
+這樣 MySQL 先找到已發佈的問卷，再依結束日期的順序往下讀，讀滿十筆符合條件的資料就能停下來。
+
+`start_date` 留給 WHERE 再檢查一次就好。
 -->
 
 ---
@@ -356,19 +356,23 @@ layout: default
 
 # 練習 1：解題提示（續）
 
-**加索引後的預期 EXPLAIN 結果：**
+**加索引後實際的 EXPLAIN 結果：**
 
-| 欄位 | 改善前 | 改善後（預期）|
+| 欄位 | 改善前 | 改善後 |
 | --- | --- | --- |
-| `key` | NULL | idx_cust_status_date |
-| `rows` | 1,000,000 | 少量（數十到數百）|
+| `key` | NULL | idx_pub_end |
+| `rows`（預估） | 199,396 | 2,304 |
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>最左前綴規則：</b><code>(published, end_date)</code> 可用於 <code>WHERE published = ?</code> 與 <code>WHERE published = ? AND end_date …</code>，但單獨查 <code>end_date</code> 用不到這個索引。
+</div>
 
 <!--
-加上索引之後，EXPLAIN 預期會有這些變化。
+加上索引之後，key 顯示我們剛建立的索引，rows 從將近二十萬，降到兩千多筆。
 
-key 會顯示我們剛建立的索引名稱，代表 MySQL 用上了它。rows 從一百萬，降到幾十到幾百筆，只需要看這位顧客已完成的訂單。
+rows 是 MySQL 的預估值，不同的資料分布結果會不一樣，重點是看它大幅下降了。
 
-這裡再複習一次最左前綴規則。這個索引可以用在只查顧客編號，或是顧客編號加狀態的查詢。但如果只用狀態查詢，就沒辦法用到它，因為少了最左邊的顧客編號。
+這裡再複習一次最左前綴規則。這個索引可以用在只查 `published`，或是同時查 `published` 和 `end_date` 的查詢。但如果只查 `end_date`，少了最左邊的欄位，就用不到它了。
 -->
 
 ---
@@ -376,29 +380,30 @@ layout: default
 ---
 
 # 練習 2：任務說明
-### 設計索引策略
+### 設計問卷系統的索引策略
 
-有一個電商系統，常用的查詢如下：
+以下是問卷系統常用的五個查詢（資料表結構見 `sql/schema.sql`）：
 
-1. 查詢某顧客的所有訂單（`WHERE customer_id = ?`）
-2. 查詢特定日期範圍的訂單（`WHERE order_date BETWEEN ? AND ?`）
-3. 查詢有庫存的商品，依價格排序取前 20 筆（`WHERE stock > 0 ORDER BY price LIMIT 20`）
-4. 用商品名稱關鍵字搜尋（`WHERE name LIKE '%iPhone%'`）
+1. 某份問卷的所有題目：`questions WHERE survey_id = ?`
+2. 某問卷的作答列表：`survey_responses WHERE survey_id = ? ORDER BY id DESC LIMIT 10`
+3. 檢查 Email 是否填過：`survey_responses WHERE survey_id = ? AND email = ?`
+4. 統計某題的所有答案：`response_answers WHERE question_id = ?`
+5. 標題模糊搜尋：`surveys WHERE title LIKE '%午餐%'`
 
 **任務：**
-1. 為每個查詢提出對應的索引方案
-2. 說明哪個查詢即使加了索引也不會有效果，以及原因
+1. 對每個查詢，說明 `schema.sql` **已經有**哪個索引可用，還是需要**新增**
+2. 說明哪個查詢加了 B-Tree 索引也沒有效果，並提出替代方案
 
 <!--
-第二題是設計索引策略。畫面上列出了一個電商系統最常用的四個查詢。
+第二題要練習一個很實用的技能，先看懂資料表已經有哪些索引，再決定要不要新增。
 
-請大家幫每個查詢提出對應的索引方案，並且找出哪一個查詢就算加了索引也沒有效果，說明原因。
+請大家打開 `schema.sql`，對照這五個查詢。可以用 `SHOW INDEX FROM` 加上表名，看到一張表所有的索引。
 
-這裡給一個思考方向。第四個查詢的 LIKE，前面多了一個百分比符號，想想看字典的目錄，還幫得上忙嗎？
+思考一下，`UNIQUE` 約束除了保證不重複，它本身是不是也是一個索引？
 
-我們先暫停一下，自己想想看。
+我們先暫停一下，自己分析看看。
 
-【講師】給大家五到十分鐘，可以先討論第四題為什麼特別。
+【講師】給大家十分鐘，可以先討論第五題為什麼特別。
 -->
 
 ---
@@ -409,32 +414,48 @@ layout: default
 
 | 查詢 | 索引方案 | 說明 |
 | --- | --- | --- |
-| `WHERE customer_id = ?` | `INDEX (customer_id)` | 外鍵欄位，標準索引 |
-| `WHERE order_date BETWEEN ? AND ?` | `INDEX (order_date)` | 範圍查詢，B-Tree 索引有效 |
-| `WHERE stock > 0 ORDER BY price LIMIT 20` | `INDEX (price)` | 依價格順序讀取，湊滿 20 筆就停 |
-| `WHERE name LIKE '%iPhone%'` | ❌ B-Tree 索引無效 | 前導 % 無法使用索引 |
-
-**LIKE '%xxx%' 的替代方案：**
-
-```sql
--- 方案一：改用 FULLTEXT 索引（支援全文搜尋）
-ALTER TABLE products ADD FULLTEXT INDEX ft_name (name);
-SELECT * FROM products WHERE MATCH(name) AGAINST('iPhone');
-
--- 方案二：改用前綴搜尋 LIKE 'xxx%'（可使用 B-Tree 索引）
-SELECT * FROM products WHERE name LIKE 'iPhone%';
-```
+| 1. 問卷的題目 | ✅ 已有 `idx_questions_survey` | 外鍵欄位，建表時已建立 |
+| 2. 作答列表 | ✅ 已有 `uk_survey_email` | 最左前綴可用 `survey_id` |
+| 3. 檢查 Email | ✅ 已有 `uk_survey_email` | 兩個欄位完整命中 |
+| 4. 某題的答案 | ✅ 已有 `idx_answers_question` | 統計頁的核心查詢 |
+| 5. `LIKE '%午餐%'` | ❌ B-Tree 索引無效 | 前導 `%` 無法定位起點 |
 
 <!--
-我們來看解答。前兩個查詢很單純，顧客編號是外鍵，加一般索引就好。日期範圍查詢，B-Tree 索引也能處理。
+前四個查詢，資料表都已經有索引可以用，不需要新增。這也回答了剛才的思考題，`UNIQUE` 本身就是一個索引，一舉兩得。
 
-第三個查詢，大部分商品都有庫存，用庫存篩選效果有限，反而是排序比較吃力。所以幫價格加索引，索引裡的價格本來就排好了，MySQL 照順序讀，湊滿二十筆有庫存的商品就能停下來。
+第二個查詢要多說一句。範例資料很少，EXPLAIN 可能顯示 MySQL 直接用主鍵。這是優化器依資料量做的判斷，不代表索引不能用。
 
-第四個查詢加了索引也沒用。這就像字典的目錄是依字首排列的，要找「中間包含某個字」的詞，目錄幫不上忙，只能整本翻。
+第五個查詢前面有百分比符號，就像字典的目錄幫不上忙，只能整本翻。
+-->
 
-替代方案有兩個。一是改用 FULLTEXT 索引，搭配 `MATCH AGAINST` 做全文搜尋。二是改成 `LIKE 'iPhone%'`，就能用 B-Tree 索引，不過意思變成以 iPhone 開頭，跟包含 iPhone 不完全一樣。
+---
+layout: default
+---
 
-如果需要更強的搜尋，實務上通常會引入 Elasticsearch 這類專門的搜尋引擎。
+# 練習 2：解題提示（續）
+
+```sql
+-- 方案一：FULLTEXT 索引（中文要指定 ngram 分詞器）
+ALTER TABLE surveys
+  ADD FULLTEXT INDEX ft_title (title) WITH PARSER ngram;
+SELECT id, title FROM surveys
+WHERE MATCH(title) AGAINST('午餐');
+
+-- 方案二：改成前綴搜尋（只能找「以午餐開頭」）
+SELECT id, title FROM surveys
+WHERE title LIKE '午餐%';
+```
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>資料量小時，直接用 LIKE 就夠了。</b>索引有維護成本，不要為了「可能會用到」就亂建。
+</div>
+
+<!--
+替代方案有兩個。一是 FULLTEXT 索引。MySQL 預設的分詞方式對中文不友善，所以要指定 ngram。二是改成前綴搜尋，可以用 B-Tree 索引，不過意思變成以午餐開頭。
+
+兩個方案在範例資料上都會查到午餐偏好調查。
+
+不過，資料量小的時候，直接用 LIKE 就夠了。索引有維護成本，寫入時也要一起更新，所以不要為了可能會用到就亂建。
 -->
 
 ---

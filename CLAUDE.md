@@ -56,3 +56,13 @@ routeAlias: ch01
 - Progressive reveal: `v-click` / `v-clicks`
 - Custom styles: inline in frontmatter `style:` block
 - Tailwind utility classes work directly in slide markdown
+
+## 貫穿專案：動態問卷系統
+
+ch03–ch10 的練習題全部使用「動態問卷系統」的資料庫（`dynamic_survey`，六張表）。這是跨課程（MySQL / Spring Boot / Angular / Docker）的共用專案，**規格以 `SURVEY-SPEC.md` 為準**（各 repo 內容一致，修改時要同步）。
+
+- `sql/schema.sql`：建表腳本（ch04 練習 1 的標準解答；含 `SET NAMES utf8mb4`）
+- `sql/seed.sql`：範例資料，日期一律相對於 `CURDATE()`，所以「進行中／尚未開始／已結束」隨時執行都成立
+- 練習題的 SQL 都已在 MySQL 8.x 實際執行驗證過；改題目時請先在 `schema.sql` + `seed.sql` 上跑過再寫進投影片
+- 練習題只用該章之前教過的語法；沒教過的函式要在題目頁給提示
+- 執行 SQL 檔時請用 `mysql --default-character-set=utf8mb4`，否則中文會被雙重編碼

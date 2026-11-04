@@ -525,32 +525,29 @@ layout: default
 ---
 
 # 練習 1：任務說明
-### 分析訂單資料
+### 動態問卷：前台列表的查詢
 
-假設你有以下資料表：
-
-```sql
-CREATE TABLE orders (
-  id          INT PRIMARY KEY AUTO_INCREMENT,
-  customer_id INT NOT NULL,
-  amount      DECIMAL(10,2) NOT NULL,
-  status      VARCHAR(20) NOT NULL,
-  order_date  DATE NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
+先執行 `sql/schema.sql` 與 `sql/seed.sql`，取得 `dynamic_survey` 的範例資料。
 
 **任務：**
-1. 查詢 2024 年的訂單，只顯示 `completed` 狀態的，按金額降冪排序，取前 10 筆
-2. 統計每個月的訂單數量和總金額，只顯示訂單數量超過 100 的月份
+1. 查詢「進行中」的問卷（已發佈，且今天介於開始與結束日期之間），標題包含「調查」，依結束日期由早到晚排序，取前 10 筆
+2. 承上題，寫出第 2 頁（每頁 10 筆）的 SQL
+3. 統計每份問卷的作答人數，只顯示人數**大於等於 2** 的問卷，依人數由多到少排序
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>提示：</b>今天的日期用 <code>CURDATE()</code> 取得。範例資料的日期都相對於今天，所以隨時執行都會有進行中的問卷。
+</div>
 
 <!--
-第一題，我們用一張訂單表來練習分析。任務有兩個。第一個是找出 2024 年、狀態是 completed 的訂單，依金額由高到低排序，只取前十筆。第二個是統計每個月的訂單數量和總金額，只顯示訂單數量超過一百筆的月份。
+從這裡開始，我們換到動態問卷的資料庫來練習。這一題就是前台問卷列表頁背後的查詢。
 
-思考一下，第二題篩選的是每個月的統計數字，那這個條件應該寫在 WHERE，還是 HAVING？
+第一題要組合 WHERE、LIKE、ORDER BY 和 LIMIT。今天的日期可以用 `CURDATE()` 這個函式取得。第二題練習分頁。第三題要統計作答人數，只用 `survey_responses` 一張表就夠了。
 
-我們先暫停一下，自己寫寫看。
+思考一下，第 N 頁的 OFFSET 應該怎麼算？
 
-【講師】給大家十分鐘，可以提示日期函式 YEAR 和 MONTH 的用法。
+我們先暫停一下，自己動手寫寫看。
+
+【講師】給大家十分鐘，先確認每位同學都成功匯入範例資料。
 -->
 
 ---
@@ -560,34 +557,32 @@ layout: default
 # 練習 1：解題提示
 
 ```sql
--- 題目一：2024 年已完成訂單，金額前 10
-SELECT id, customer_id, amount, order_date
-FROM orders
-WHERE status = 'completed'
-  AND order_date BETWEEN '2024-01-01' AND '2024-12-31'
-ORDER BY amount DESC
+-- 1. 進行中、標題含「調查」，依結束日期排序，前 10 筆
+SELECT id, title, start_date, end_date
+FROM surveys
+WHERE published = 1
+  AND CURDATE() BETWEEN start_date AND end_date
+  AND title LIKE '%調查%'
+ORDER BY end_date
 LIMIT 10;
 
--- 題目二：每個月訂單統計，只顯示超過 100 筆的月份
-SELECT
-  YEAR(order_date)  AS year,
-  MONTH(order_date) AS month,
-  COUNT(*)          AS order_count,
-  SUM(amount)       AS total_amount
-FROM orders
-GROUP BY YEAR(order_date), MONTH(order_date)
-HAVING COUNT(*) > 100
-ORDER BY year, month;
+-- 2. 第 2 頁：把最後一行改成 LIMIT 10 OFFSET 10
+--    OFFSET = (頁碼 - 1) * 每頁筆數
+
+-- 3. 作答人數大於等於 2 的問卷
+SELECT survey_id, COUNT(*) AS response_count
+FROM survey_responses
+GROUP BY survey_id
+HAVING COUNT(*) >= 2
+ORDER BY response_count DESC;
 ```
 
 <!--
-我們來看解答。
+第一題，`published = 1` 排除草稿，`BETWEEN` 篩出進行中的問卷，開始和結束當天都算在內。執行後會看到三份問卷，快結束的排在前面。
 
-第一題是 WHERE、ORDER BY 和 LIMIT 的組合。條件裡用 `BETWEEN` 篩選 2024 年整年的日期，日期寫成字串，MySQL 會自動轉換。接著依金額由大到小排序，最後 `LIMIT 10` 取前十筆。執行後會得到 2024 年金額最高的十筆完成訂單。
+第二題回答剛才的思考題，OFFSET 等於頁碼減一，再乘上每頁筆數。範例資料只有三筆，所以第二頁是空的，這是正常的結果。
 
-第二題回答了剛才的思考題。我們用 `YEAR` 和 `MONTH` 兩個函式，依年月分組，算出每個月的筆數和總金額。超過一百筆這個條件，是針對分組後的統計結果，所以要用 `HAVING COUNT(*) > 100`，而不是 WHERE。
-
-最後別忘了 `ORDER BY year, month`，讓結果依時間排列，因為 MySQL 8 的 GROUP BY 不會自動幫我們排序。
+第三題，條件是聚合後的結果，所以要寫在 HAVING。結果是問卷 2 有四人、問卷 1 有三人、問卷 6 有兩人。
 -->
 
 ---
@@ -595,38 +590,34 @@ layout: default
 ---
 
 # 練習 2：任務說明
-### 找出 WHERE vs HAVING 的差別
+### 用 CASE 算出問卷狀態
 
-以下兩個 SQL 查詢，結果是否相同？為什麼？
+資料庫**沒有**存「進行中 / 已結束」，要在查詢時計算：
 
-```sql
--- 查詢 A
-SELECT category, COUNT(*) AS cnt, AVG(price) AS avg_price
-FROM products
-WHERE price > 1000
-GROUP BY category;
+- `published = 0`：未發佈
+- 已發佈，且今天早於開始日期：尚未開始
+- 已發佈，且今天介於開始與結束日期：進行中
+- 已發佈，且今天晚於結束日期：已結束
 
--- 查詢 B
-SELECT category, COUNT(*) AS cnt, AVG(price) AS avg_price
-FROM products
-GROUP BY category
-HAVING AVG(price) > 1000;
-```
+**任務：**
+1. 列出所有問卷的 `id`、`title` 與計算出來的 `status`
+2. 統計每種狀態各有幾份問卷
+3. 只列出進行中的問卷。思考：能直接寫 `WHERE status = '進行中'` 嗎？
 
-**思考：** 這兩個查詢各自的含義是什麼？結果會一樣嗎？
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>新語法 CASE：</b><code>CASE WHEN 條件 THEN 值 WHEN 條件 THEN 值 ELSE 值 END</code>，由上往下判斷，符合第一個條件就停止。
+</div>
 
 <!--
-第二題是一個思考題。畫面上有兩個查詢，看起來很像，都在依分類統計商品數量和平均價格。
+第二題要算出問卷狀態。這裡會用到一個新語法 CASE，它就像一連串的如果，由上往下判斷，符合了就回傳對應的值，後面就不再看了。
 
-差別在於，查詢 A 用 WHERE 篩選價格大於一千，查詢 B 用 HAVING 篩選平均價格大於一千。
+請大家依畫面上的規則算出狀態，再統計每種狀態有幾份。
 
-請大家想想看，這兩個查詢的意思分別是什麼？執行結果會一樣嗎？
+思考一下，第三題能不能直接寫 `WHERE status` 等於進行中？想想我們剛學的子句執行順序。
 
-可以從執行順序來思考，WHERE 和 HAVING 分別是在分組之前還是之後執行？
+我們先暫停一下，自己動手試試看。
 
-我們先暫停一下，想清楚再看答案。
-
-【講師】給大家三到五分鐘，可以請幾位同學說說自己的判斷。
+【講師】給大家十分鐘，CASE 是新語法，可以先帶大家看一次畫面上的提示。
 -->
 
 ---
@@ -635,29 +626,63 @@ layout: default
 
 # 練習 2：解題提示
 
-**結果不同！**
-
-| 面向 | 查詢 A（WHERE price > 1000）| 查詢 B（HAVING AVG > 1000）|
-| --- | --- | --- |
-| 先做什麼 | 先篩掉 price ≤ 1000 的商品 | 先統計所有商品 |
-| COUNT 計算什麼 | 只計算 price > 1000 的商品數 | 計算該類別的全部商品數 |
-| AVG 計算什麼 | 只計算 price > 1000 的商品均價 | 計算所有商品的均價 |
-| 篩選目標 | 列出包含 1000+ 商品的各類別統計 | 列出整體均價超過 1000 的類別 |
+```sql
+-- 1. 計算狀態
+SELECT id, title,
+  CASE
+    WHEN published = 0          THEN '未發佈'
+    WHEN CURDATE() < start_date THEN '尚未開始'
+    WHEN CURDATE() <= end_date  THEN '進行中'
+    ELSE '已結束'
+  END AS status
+FROM surveys;
+```
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>結論：</b>WHERE 影響「哪些資料參與統計」，HAVING 影響「哪些統計結果被回傳」。
+💡 <b>順序很重要：</b>第一行處理掉未發佈，後面就不用再寫 <code>published = 1</code>；第二行處理掉尚未開始，第三行只要判斷有沒有超過結束日期。
 </div>
 
 <!--
-答案是結果不同，我們用一個例子來看。
+CASE 由上往下判斷，所以條件可以越寫越短。第一行先處理掉未發佈的問卷，後面就不用再判斷有沒有發佈。第二行處理掉尚未開始的，第三行只要看有沒有超過結束日期。
 
-假設配件分類裡有十個商品，其中八個是幾百元的小配件，兩個是三千元的耳機。
+如果順序寫反了，未發佈的問卷就可能被當成進行中，所以順序很重要。
 
-查詢 A 先用 WHERE 把一千元以下的商品排除，只剩兩副耳機參與統計。所以配件會出現在結果裡，數量是二，平均價格是三千。
+執行後，六份問卷會分別顯示自己的狀態。
+-->
 
-查詢 B 則是先統計全部十個商品，平均價格可能只有幾百元，接著 HAVING 判斷平均沒有超過一千，整個配件分類就被過濾掉了。
+---
+layout: default
+---
 
-所以結論是，WHERE 決定「哪些資料參與統計」，HAVING 決定「哪些統計結果被回傳」。
+# 練習 2：解題提示（續）
+
+```sql
+-- 2. 每種狀態的數量
+SELECT
+  CASE
+    WHEN published = 0          THEN '未發佈'
+    WHEN CURDATE() < start_date THEN '尚未開始'
+    WHEN CURDATE() <= end_date  THEN '進行中'
+    ELSE '已結束'
+  END AS status,
+  COUNT(*) AS cnt
+FROM surveys
+GROUP BY status
+ORDER BY cnt DESC;
+
+-- 3. WHERE 看不到別名 status，把條件直接寫出來
+SELECT id, title
+FROM surveys
+WHERE published = 1
+  AND CURDATE() BETWEEN start_date AND end_date;
+```
+
+<!--
+第二題，把算出來的 `status` 拿來 GROUP BY，MySQL 是允許的。結果是進行中三份，已結束、尚未開始和未發佈各一份。
+
+第三題不能直接寫，MySQL 會回報 Unknown column。原因就在執行順序，WHERE 比 SELECT 先執行，這時候別名 `status` 還不存在。
+
+解法很單純，把進行中的原始條件直接寫進 WHERE，也就是練習一的寫法。這樣查到的就是問卷 2、3、6。
 -->
 
 ---
