@@ -386,7 +386,7 @@ layout: default
 
 我們先暫停一下，動手寫寫看。
 
-【講師】給大家十分鐘，可以提醒前兩個任務就是上一章學過的分組統計。
+【講師】給大家十分鐘，可以提醒前兩個任務就是前面 DQL 那一章學過的分組統計。
 -->
 
 ---
@@ -499,8 +499,7 @@ CREATE OR REPLACE VIEW public_employees_view AS
 SELECT
   id,
   name,
-  department,
-  hire_date
+  department
 FROM employees;
 
 -- 2. HR VIEW（薪資顯示，身份證遮罩）
@@ -519,7 +518,7 @@ FROM employees;
 <!--
 我們來看前兩個 VIEW。
 
-`public_employees_view` 很單純，只 SELECT 需要公開的欄位，編號、姓名、部門和到職日，完全不包含薪資和身分證字號。
+`public_employees_view` 很單純，只 SELECT 需要公開的欄位，編號、姓名和部門，完全不包含薪資和身分證字號。
 
 `hr_employees_view` 保留了薪資，身分證字號則用 `CONCAT('****', RIGHT(ssn, 4))` 處理。`RIGHT` 取出最後四碼，`CONCAT` 再在前面接上四個星號。
 

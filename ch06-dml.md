@@ -330,7 +330,7 @@ WHERE category = '電腦' AND is_active = 1;
 
 在正式環境，還可以更進一步，把 UPDATE 放進交易裡。先 `START TRANSACTION`，執行 UPDATE，查一下結果。沒問題就 `COMMIT` 提交，發現不對就 `ROLLBACK`，整個修改都會取消。
 
-這也是 DML 比 DDL 安全的地方。上一章說過，DDL 執行就確定了，但 DML 可以放在交易裡，還有反悔的機會。
+這也是 DML 比 DDL 安全的地方。前面 DDL 那一章說過，DDL 執行就確定了，但 DML 可以放在交易裡，還有反悔的機會。
 -->
 
 ---
@@ -555,8 +555,8 @@ layout: default
 
 你的電商系統要進行「年終折扣活動」：
 
-- 所有價格超過 10000 的商品打八折
-- 所有「配件」類別的商品打七折
+- 「配件」類別的商品一律打七折
+- 其他類別中，價格超過 10000 的商品打八折
 
 **任務：**
 1. 先在 `products_backup` 備份現有商品（CREATE TABLE ... LIKE + INSERT ... SELECT）
@@ -564,7 +564,7 @@ layout: default
 3. 用 SELECT 檢查結果：正確就 COMMIT，發現錯誤就 ROLLBACK
 
 <!--
-第二題來模擬一個年終折扣活動。價格超過一萬的商品打八折，配件類商品打七折。
+第二題來模擬一個年終折扣活動。配件類商品一律打七折，其他類別中，價格超過一萬的商品打八折。
 
 任務有三步。先把商品表完整備份到 `products_backup`。再用交易包住兩個打折的 UPDATE。最後查詢結果，正確就提交，發現錯誤就取消。
 
@@ -591,7 +591,7 @@ START TRANSACTION;
 
 UPDATE products
 SET price = price * 0.8
-WHERE price > 10000;
+WHERE price > 10000 AND category <> '配件';
 
 UPDATE products
 SET price = price * 0.7
@@ -609,7 +609,7 @@ COMMIT;     -- 結果正確：提交
 
 第一步用 `CREATE TABLE ... LIKE` 建立一張結構相同的空表，再用 `INSERT ... SELECT` 把資料全部複製過去。這是多一層保險，萬一交易提交後才發現問題，還有備份可以參考。
 
-第二步把兩個 UPDATE 放進同一個交易。這就回答了剛才的思考題，兩個修改會被當成一件事，不會出現有些商品打了折、有些沒有的狀況。
+第二步把兩個 UPDATE 放進同一個交易。這就回答了剛才的思考題，兩個修改會被當成一件事，不會出現有些商品打了折、有些沒有的狀況。另外注意第一個 UPDATE 排除了配件，否則超過一萬的配件會被打兩次折。
 
 第三步先 SELECT 檢查價格。結果正確就 COMMIT，修改正式生效。發現打錯折，就 ROLLBACK，兩個 UPDATE 會一起取消，商品價格回到交易開始前的樣子。
 -->

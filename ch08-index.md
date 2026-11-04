@@ -337,17 +337,17 @@ layout: default
 **最佳化方案：**
 
 ```sql
--- 建立複合索引：WHERE 用到的兩個欄位
-CREATE INDEX idx_cust_status
-  ON orders (customer_id, status);
+-- 建立複合索引：WHERE 的兩個欄位 + ORDER BY 的欄位
+CREATE INDEX idx_cust_status_date
+  ON orders (customer_id, status, order_date);
 ```
 
 <!--
 我們先看問題分析。key 是 NULL，代表沒有任何索引可用。rows 是一百萬，等於整張表都掃過一遍，只為了找出一位顧客的十筆訂單。
 
-最佳化方案是幫 WHERE 用到的兩個欄位，建立一個複合索引。這也回答了剛才的思考題，兩個條件常常一起出現，用一個複合索引就能同時照顧到。
+最佳化方案是建立一個複合索引，包含 WHERE 用到的兩個欄位，再加上排序用的日期。這也回答了剛才的思考題，兩個條件常常一起出現，用一個複合索引就能同時照顧到。
 
-欄位順序也有講究。`customer_id` 放第一個，因為每位顧客只佔全部訂單的一小部分，先用它篩選，範圍一下子就縮小了。`status` 放第二個，在這位顧客的訂單裡，再挑出已完成的。
+欄位順序也有講究。`customer_id` 放第一個，因為每位顧客只佔全部訂單的一小部分，先用它篩選，範圍一下子就縮小了。`status` 放第二個，在這位顧客的訂單裡，再挑出已完成的。`order_date` 放最後，符合條件的訂單在索引裡已經依日期排好，MySQL 從最新的讀起，讀到十筆就能停下來。
 -->
 
 ---
@@ -360,7 +360,7 @@ layout: default
 
 | 欄位 | 改善前 | 改善後（預期）|
 | --- | --- | --- |
-| `key` | NULL | idx_cust_status |
+| `key` | NULL | idx_cust_status_date |
 | `rows` | 1,000,000 | 少量（數十到數百）|
 
 <!--
@@ -382,7 +382,7 @@ layout: default
 
 1. 查詢某顧客的所有訂單（`WHERE customer_id = ?`）
 2. 查詢特定日期範圍的訂單（`WHERE order_date BETWEEN ? AND ?`）
-3. 查詢有庫存的商品，依價格排序（`WHERE stock > 0 ORDER BY price`）
+3. 查詢有庫存的商品，依價格排序取前 20 筆（`WHERE stock > 0 ORDER BY price LIMIT 20`）
 4. 用商品名稱關鍵字搜尋（`WHERE name LIKE '%iPhone%'`）
 
 **任務：**
@@ -411,7 +411,7 @@ layout: default
 | --- | --- | --- |
 | `WHERE customer_id = ?` | `INDEX (customer_id)` | 外鍵欄位，標準索引 |
 | `WHERE order_date BETWEEN ? AND ?` | `INDEX (order_date)` | 範圍查詢，B-Tree 索引有效 |
-| `WHERE stock > 0 ORDER BY price` | `INDEX (price)` | 排序欄位加索引，依價格順序讀取 |
+| `WHERE stock > 0 ORDER BY price LIMIT 20` | `INDEX (price)` | 依價格順序讀取，湊滿 20 筆就停 |
 | `WHERE name LIKE '%iPhone%'` | ❌ B-Tree 索引無效 | 前導 % 無法使用索引 |
 
 **LIKE '%xxx%' 的替代方案：**
@@ -428,7 +428,7 @@ SELECT * FROM products WHERE name LIKE 'iPhone%';
 <!--
 我們來看解答。前兩個查詢很單純，顧客編號是外鍵，加一般索引就好。日期範圍查詢，B-Tree 索引也能處理。
 
-第三個查詢，大部分商品都有庫存，用庫存篩選效果有限，反而是排序比較吃力。所以幫價格加索引，索引裡的價格本來就排好了，MySQL 照順序讀就好。
+第三個查詢，大部分商品都有庫存，用庫存篩選效果有限，反而是排序比較吃力。所以幫價格加索引，索引裡的價格本來就排好了，MySQL 照順序讀，湊滿二十筆有庫存的商品就能停下來。
 
 第四個查詢加了索引也沒用。這就像字典的目錄是依字首排列的，要找「中間包含某個字」的詞，目錄幫不上忙，只能整本翻。
 

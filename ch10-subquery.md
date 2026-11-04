@@ -597,7 +597,7 @@ class: flex flex-col justify-center items-center text-center
 
 所以實務建議是這樣的。IN 子查詢和 INNER JOIN 效能相近，選好讀的就好。NOT IN 優先改寫成 NOT EXISTS 或 LEFT JOIN 加 IS NULL，避開 NULL 陷阱。SELECT 裡的相關子查詢，盡量改用 JOIN。
 
-最後，不要憑感覺猜哪個快，用上一章學的 EXPLAIN 實際看看。
+最後，不要憑感覺猜哪個快，用前面索引那一章學的 EXPLAIN 實際看看。
 -->
 
 ---

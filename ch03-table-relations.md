@@ -485,7 +485,7 @@ class: flex flex-col justify-center items-center text-center
 
 # 注意一：外鍵欄位要加 INDEX
 
-MySQL 不會自動在外鍵欄位建立索引（除非是主鍵），但 JOIN 時非常需要：
+InnoDB 建立外鍵時，若欄位沒有索引會自動建立；建議明確寫出來，名稱和用途更清楚：
 
 ```sql
 CREATE TABLE orders (
@@ -499,7 +499,7 @@ CREATE TABLE orders (
 ```
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-⚠️ <b>效能陷阱：</b>沒有 INDEX 的外鍵欄位，每次 JOIN 都需要全表掃描。資料量大時速度會非常慢！
+⚠️ <b>效能陷阱：</b>JOIN 用到的欄位如果沒有 INDEX，就可能需要全表掃描。資料量大時速度會非常慢！
 </div>
 
 <!--
@@ -507,7 +507,7 @@ CREATE TABLE orders (
 
 畫面上的寫法，是用 `INDEX idx_customer_id (customer_id)` 這一行明確幫外鍵建立索引。
 
-這裡要補充一個細節。投影片說 MySQL 不會自動建索引，其實 InnoDB 在建立外鍵時，如果欄位還沒有索引，會自動幫我們建一個。不過明確寫出來，讀程式的人一眼就看得懂，索引名稱也由我們自己決定，更清楚。
+這裡要注意一個細節。InnoDB 在建立外鍵時，如果欄位還沒有索引，會自動幫我們建一個。不過明確寫出來，讀程式的人一眼就看得懂，索引名稱也由我們自己決定，更清楚。
 
 所以養成一個習慣：外鍵欄位都明確加上 INDEX。
 -->
@@ -553,7 +553,7 @@ ALTER TABLE departments
 | --- | --- | --- |
 | 用逗號分隔存多個外鍵值 | 違反 1NF，無法用索引查詢 | 建立中介表（多對多）|
 | 外鍵欄位型別不一致 | MySQL 報錯，無法建立 FOREIGN KEY | 父子表的相關欄位型別必須完全一致 |
-| 忘記加 INDEX | JOIN 時全表掃描，效能低落 | 外鍵欄位一定加 INDEX |
+| 關聯欄位沒有 INDEX（如未宣告外鍵）| JOIN 時可能全表掃描，效能低落 | 關聯欄位明確加 INDEX |
 | 使用 MyISAM 引擎 | 外鍵語法不報錯但完全不起作用 | 改用 InnoDB |
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
@@ -583,7 +583,7 @@ MySQL 8 的預設引擎已經是 InnoDB，不過維護舊專案時一定要檢�
 - **注意事項** — 外鍵加 INDEX、注意建立順序、使用 InnoDB 引擎
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-🚀 <b>下一章：</b>有了設計基礎，我們開始學 SELECT 查詢，探索如何從這些精心設計的資料表裡取出我們要的資料！
+🚀 <b>下一章：</b>有了設計基礎，我們開始學 DDL，用 SQL 把這些精心設計的資料表真正建立起來！
 </div>
 
 <!--
@@ -591,7 +591,7 @@ MySQL 8 的預設引擎已經是 InnoDB，不過維護舊專案時一定要檢�
 
 外鍵的連動選項裡，`RESTRICT` 是安全的預設，`CASCADE` 會連帶處理，`SET NULL` 會保留子資料。實務上還要記得幫外鍵加索引、注意建表順序，以及使用 InnoDB。
 
-到這裡，前三章的設計基礎就完整了。接下來我們先用兩題練習把關聯設計練熟，之後就要正式開始寫 SQL 查詢了。
+到這裡，前三章的設計基礎就完整了。接下來我們先用兩題練習把關聯設計練熟，之後就要正式開始寫 SQL，先從建立資料表開始。
 -->
 
 ---
