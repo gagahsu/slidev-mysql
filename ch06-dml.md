@@ -63,10 +63,9 @@ layout: default
 - **UPDATE 修改資料** — 修改欄位值，使用 WHERE 精確定位
 - **DELETE 刪除資料** — 刪除特定筆資料，WITH 安全刪除
 - **DML 的安全習慣** — 使用 Transaction 保護資料
-- **INSERT ON DUPLICATE KEY UPDATE** — 存在則更新，不存在則新增
 
 <!--
-這一章會依序學三個指令。先用 INSERT 新增資料，包括一次多筆，以及從其他表複製。接著是 UPDATE 修改和 DELETE 刪除，這兩個如果用錯，可能一次毀掉整張表，所以我們會花時間建立安全習慣，並學會用交易來保護資料。最後是兩個進階的新增技巧，處理資料重複時該怎麼辦。
+這一章會依序學三個指令。先用 INSERT 新增資料，包括一次多筆，以及從其他表複製。接著是 UPDATE 修改和 DELETE 刪除，這兩個如果用錯，可能一次毀掉整張表，所以我們會花時間建立安全習慣，最後學會用交易來保護資料。
 -->
 
 ---
@@ -179,7 +178,7 @@ VALUES
 
 大家注意，我們都沒有提供 `id` 和 `updated_at`。執行後，`id` 會由 AUTO_INCREMENT 自動編號，`updated_at` 會自動填入目前時間。第一段也沒給 `is_active`，它的預設值是 1，所以商品會是上架狀態。
 
-這裡要提醒一點，批次新增時，只要其中一筆違反約束，例如 UNIQUE 重複，整個 INSERT 就會失敗，一筆都不會寫入。如果希望重複的跳過、其他照樣寫入，可以用 INSERT IGNORE，這個我們在最後一部分會講。
+這裡要提醒一點，批次新增時，只要其中一筆違反約束，例如 UNIQUE 重複，整個 INSERT 就會失敗，一筆都不會寫入。遇到這種錯誤，先找出是哪一筆重複，修正後再重新執行就可以了。
 -->
 
 ---
@@ -444,84 +443,6 @@ COMMIT;
 -->
 
 ---
-layout: section
-class: flex flex-col justify-center items-center text-center
----
-
-# 第四部分
-# 進階 INSERT 技巧
-
-<!--
-最後一部分，我們學兩個進階的新增技巧，處理資料已經存在時該怎麼辦。
--->
-
----
-
-# INSERT IGNORE — 忽略重複
-
-「INSERT IGNORE 讓重複插入的資料靜默失敗，不報錯。」
-
-```sql
--- 一般 INSERT，若 sku 重複會報錯
-INSERT INTO products (name, sku, price)
-VALUES ('iPhone 15', 'IPH15', 28900.00);
-
--- INSERT IGNORE，若 sku 重複則忽略這筆，繼續執行
-INSERT IGNORE INTO products (name, sku, price)
-VALUES
-  ('iPhone 15', 'IPH15', 28900.00),
-  ('iPhone 15 Pro', 'IPH15P', 39900.00);
-```
-
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>適用場景：</b>批次匯入資料時，希望重複的資料直接跳過，不影響其他資料的插入。
-</div>
-
-<!--
-「INSERT IGNORE 讓重複插入的資料靜默失敗，不報錯。」
-
-這個範例假設商品表的 `sku` 有 UNIQUE 約束。第一段是一般的 INSERT，如果 sku 已經存在，就會直接報錯。第二段加了 `IGNORE`，重複的那一筆會被跳過，其他資料繼續寫入。所以執行後，如果 iPhone 15 已經存在，只有 iPhone 15 Pro 會被新增。
-
-這在資料匯入時很好用。例如每天從外部系統同步商品，有些是新的，有些早就存在，用 INSERT IGNORE 就能只寫入新商品。
-
-不過要小心，它不只忽略重複，連其他錯誤也會一起忽略，例如資料型別不對。重要錯誤可能就這樣被藏起來，所以需要嚴格驗證的場合要謹慎使用。
--->
-
----
-
-# INSERT ... ON DUPLICATE KEY UPDATE
-
-「存在就更新（UPSERT），不存在就新增——解決了一個非常常見的業務需求。」
-
-```sql
--- 新增或更新商品庫存
-INSERT INTO products (sku, name, category, price, stock)
-VALUES ('IPH15', 'iPhone 15', '手機', 28900.00, 10)
-ON DUPLICATE KEY UPDATE
-  stock = stock + VALUES(stock),
-  price = VALUES(price);
-```
-
-- 若 sku = 'IPH15' 不存在：插入新商品，stock = 10
-- 若 sku = 'IPH15' 已存在：stock 加上 10，price 更新為新價格
-
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>觸發條件：</b>ON DUPLICATE KEY UPDATE 在 PRIMARY KEY 或 UNIQUE KEY 衝突時觸發更新。
-</div>
-
-<!--
-「存在就更新，不存在就新增」，這個需求非常常見，通常叫做 UPSERT。
-
-以補貨為例。進貨時，如果這個商品已經在表裡，就把庫存加上去；如果是新商品，就直接新增。
-
-這段 SQL 前半段是普通的 INSERT。關鍵在後面的 `ON DUPLICATE KEY UPDATE`，當主鍵或 UNIQUE 欄位發生衝突時，它就改成執行後面的更新。`VALUES(stock)` 代表這次想寫入的值，也就是 10。
-
-所以執行後，如果 IPH15 不存在，就新增一筆，庫存是 10。如果已經存在，庫存就在原本的數量上再加 10，價格也更新成新的。
-
-另外，MySQL 8.0.20 之後，`VALUES()` 這種寫法已經不建議使用，新的寫法是幫新資料取一個別名，再用別名來引用。
--->
-
----
 
 # 總結
 
@@ -532,15 +453,13 @@ ON DUPLICATE KEY UPDATE
 - **UPDATE** — 修改資料；務必加 WHERE；執行前先 SELECT 確認範圍
 - **DELETE** — 刪除資料；務必加 WHERE；大量刪除用 LIMIT 分批
 - **Transaction** — START TRANSACTION / COMMIT / ROLLBACK 保護關鍵操作
-- **INSERT IGNORE** — 重複時靜默跳過
-- **ON DUPLICATE KEY UPDATE** — 存在更新，不存在新增（UPSERT）
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
 🚀 <b>安全原則：</b>UPDATE 和 DELETE 之前，先用相同 WHERE 條件執行 SELECT，確認影響範圍！
 </div>
 
 <!--
-我們整理這一章。INSERT 建議明確寫出欄位，批次新增效能更好，搭配 SELECT 還能整批複製。UPDATE 和 DELETE 一定要加 WHERE，大量刪除要分批。交易保護重要操作。INSERT IGNORE 會跳過重複，ON DUPLICATE KEY UPDATE 則是存在就更新。
+我們整理這一章。INSERT 建議明確寫出欄位，批次新增效能更好，搭配 SELECT 還能整批複製。UPDATE 和 DELETE 一定要加 WHERE，大量刪除要分批。重要的操作，就用交易保護起來。
 
 這章最重要的，是畫面下方那條安全原則：UPDATE 和 DELETE 之前，先用相同的 WHERE 條件 SELECT 一次。
 
@@ -638,23 +557,22 @@ layout: default
 
 - 所有價格超過 10000 的商品打八折
 - 所有「配件」類別的商品打七折
-- 活動結束後，再把所有商品的價格恢復原始價格
 
 **任務：**
 1. 先在 `products_backup` 備份現有商品（CREATE TABLE ... LIKE + INSERT ... SELECT）
 2. 執行兩個 UPDATE（八折和七折），用 Transaction 包住
-3. 從備份表恢復原始價格的 SQL（提示：用 UPDATE JOIN）
+3. 用 SELECT 檢查結果：正確就 COMMIT，發現錯誤就 ROLLBACK
 
 <!--
-第二題來模擬一個年終折扣活動。價格超過一萬的商品打八折，配件類商品打七折，活動結束後還要把價格恢復原狀。
+第二題來模擬一個年終折扣活動。價格超過一萬的商品打八折，配件類商品打七折。
 
-任務有三步。先把商品表完整備份到 `products_backup`。再用交易包住兩個打折的 UPDATE。最後用 UPDATE 搭配 JOIN，從備份表恢復價格。
+任務有三步。先把商品表完整備份到 `products_backup`。再用交易包住兩個打折的 UPDATE。最後查詢結果，正確就提交，發現錯誤就取消。
 
 思考一下，兩個 UPDATE 放在同一個交易裡，有什麼好處？
 
 我們先暫停一下，自己寫寫看。
 
-【講師】給大家十分鐘，UPDATE JOIN 的語法可以先在白板上寫出來給大家參考。
+【講師】給大家十分鐘，可以提醒 COMMIT 和 ROLLBACK 只能二選一。
 -->
 
 ---
@@ -679,28 +597,23 @@ UPDATE products
 SET price = price * 0.7
 WHERE category = '配件';
 
--- 確認結果
-SELECT id, name, category, price FROM products LIMIT 20;
+-- 3. 檢查結果
+SELECT id, name, category, price FROM products;
 
-COMMIT;  -- 確認無誤後提交
-
--- 3. 從備份表恢復原始價格
-UPDATE products p
-JOIN products_backup b ON p.id = b.id
-SET p.price = b.price;
+COMMIT;     -- 結果正確：提交
+-- ROLLBACK; -- 發現錯誤：取消兩個 UPDATE
 ```
 
 <!--
 我們來看解答。
 
-第一步用 `CREATE TABLE ... LIKE` 建立一張結構相同的空表，再用 `INSERT ... SELECT` 把資料全部複製過去。
+第一步用 `CREATE TABLE ... LIKE` 建立一張結構相同的空表，再用 `INSERT ... SELECT` 把資料全部複製過去。這是多一層保險，萬一交易提交後才發現問題，還有備份可以參考。
 
-第二步把兩個 UPDATE 放進同一個交易。這就回答了剛才的思考題，如果第二個 UPDATE 失敗，第一個也會一起回復，不會出現有些商品打了折、有些沒有的狀況。中間的 SELECT 讓我們確認結果，沒問題才 COMMIT。
+第二步把兩個 UPDATE 放進同一個交易。這就回答了剛才的思考題，兩個修改會被當成一件事，不會出現有些商品打了折、有些沒有的狀況。
 
-第三步是 UPDATE JOIN。用商品編號把兩張表對起來，再把備份表裡的原價寫回商品表。執行後，所有商品的價格都會回到活動前。
-
-最後提醒，要確認價格真的恢復了，再把備份表刪掉。
+第三步先 SELECT 檢查價格。結果正確就 COMMIT，修改正式生效。發現打錯折，就 ROLLBACK，兩個 UPDATE 會一起取消，商品價格回到交易開始前的樣子。
 -->
+
 
 ---
 layout: end
@@ -711,7 +624,7 @@ layout: end
 有任何問題嗎？
 
 <!--
-今天我們學會了用 INSERT、UPDATE、DELETE 操作資料，也學了交易和兩種處理重複資料的寫法。
+今天我們學會了用 INSERT、UPDATE、DELETE 操作資料，也學會用交易保護重要的操作。
 
 最重要的是安全習慣：UPDATE 和 DELETE 一定加 WHERE，執行前先 SELECT 確認，重要操作放進交易，大量修改分批進行。
 

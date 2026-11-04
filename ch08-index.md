@@ -63,13 +63,12 @@ layout: default
 - **索引的種類** — B-Tree、UNIQUE、FULLTEXT
 - **如何建立與管理索引** — CREATE INDEX、DROP INDEX
 - **什麼時候加索引？** — 適合與不適合的場景
-- **EXPLAIN 執行計畫** — 讀懂 MySQL 的執行計畫
-- **EXPLAIN 欄位解讀** — type、key、rows、Extra
+- **EXPLAIN 入門** — 確認查詢有沒有用到索引
 
 <!--
-這一章分成前後兩半。前半段是索引，我們會先看它的原理，再認識種類、學會建立，以及判斷什麼時候該加。後半段是 EXPLAIN，學會讀懂 MySQL 的執行計畫，特別是 type 和 Extra 這兩個欄位。
+這一章分成前後兩半。前半段是索引，我們會先看它的原理，再認識種類、學會建立，以及判斷什麼時候該加。後半段是 EXPLAIN，用它確認查詢到底有沒有用上索引。
 
-索引是加速的工具，EXPLAIN 是診斷的工具，兩個搭配起來，就是完整的查詢最佳化流程。
+索引是加速的工具，EXPLAIN 是檢查的工具，兩個搭配起來，就能讓查詢跑得更快。
 -->
 
 ---
@@ -125,10 +124,6 @@ MySQL 支援多種索引類型，每種有不同的適用場景：
 | **FULLTEXT** | 全文搜尋索引 | 長文字的關鍵字搜尋 |
 | **複合索引** | 多個欄位組成的索引 | 常常同時用多個欄位篩選的查詢 |
 
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-⚠️ <b>MySQL 8.x 新功能：</b>支援 DESC INDEX（降冪索引），讓 ORDER BY col DESC 也能用到索引，不再需要 filesort。
-</div>
-
 <!--
 表格列出了 MySQL 常見的索引種類。
 
@@ -137,8 +132,6 @@ MySQL 支援多種索引類型，每種有不同的適用場景：
 UNIQUE 索引確保值不重複，也能加速查詢。FULLTEXT 則用在長文字的關鍵字搜尋。
 
 複合索引是由好幾個欄位組成的。它有一個重要規則，叫做「最左前綴規則」。索引如果是 a、b、c 三個欄位，查詢條件要從 a 開始才用得到。只用 b 或只用 c 查詢，這個索引就派不上用場。
-
-另外，MySQL 8 開始支援降冪索引，由大到小排序也能直接用索引。
 -->
 
 ---
@@ -155,9 +148,6 @@ CREATE UNIQUE INDEX idx_sku ON products (sku);
 -- 建立複合索引（注意欄位順序！）
 CREATE INDEX idx_cat_price ON products (category, price);
 
--- MySQL 8.x：降冪索引
-CREATE INDEX idx_price_desc ON products (price DESC);
-
 -- 查看資料表的所有索引
 SHOW INDEX FROM products;
 
@@ -171,8 +161,6 @@ DROP INDEX idx_category ON products;
 一般索引用 `CREATE INDEX`，後面接索引名稱、表名和欄位。唯一索引多加一個 `UNIQUE`。
 
 複合索引要特別注意欄位順序。`(category, price)` 和 `(price, category)` 是兩個不同的索引。前者適合先用分類篩選、再看價格的查詢。後者適合只用價格篩選，或依價格排序的查詢。
-
-`price DESC` 是 MySQL 8 的降冪索引，讓由大到小的排序也能直接利用索引。
 
 最後兩行也很常用。`SHOW INDEX FROM products` 可以列出這張表所有的索引，`DROP INDEX` 則用來刪除不需要的索引。
 -->
@@ -237,7 +225,7 @@ class: flex flex-col justify-center items-center text-center
 # EXPLAIN 執行計畫
 
 <!--
-接下來是 EXPLAIN，它讓我們從「感覺很慢」變成「知道哪裡慢」。
+索引建好了，可是 MySQL 真的有用到嗎？接下來的 EXPLAIN，就是用來確認這件事的。
 -->
 
 ---
@@ -254,119 +242,25 @@ SELECT * FROM products WHERE category = '手機';
 EXPLAIN SELECT * FROM products WHERE category = '手機';
 ```
 
-EXPLAIN 的輸出包含多個欄位，其中最重要的是：
+EXPLAIN 的輸出欄位很多，初學先看這兩個：
 
-| 欄位 | 說明 |
-| --- | --- |
-| `type` | 存取類型（ALL = 最慢，const = 最快）|
-| `key` | 實際使用的索引（NULL = 沒用索引）|
-| `rows` | 預估需要掃描的資料筆數 |
-| `Extra` | 額外資訊（Using filesort / Using index 等）|
+| 欄位 | 說明 | 怎麼判斷 |
+| --- | --- | --- |
+| `key` | 實際使用的索引 | `NULL` = 沒用到索引 |
+| `rows` | 預估需要掃描的資料筆數 | 越少越好 |
+
+<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
+💡 <b>警示訊號：</b><code>key</code> 是 NULL，而且 <code>rows</code> 接近整張表的筆數，代表 MySQL 正在一筆一筆翻整張表，這個查詢需要加索引。
+</div>
 
 <!--
 「在 SELECT 前加上 EXPLAIN，MySQL 就會告訴你它打算怎麼執行這個查詢，但不會真的執行它。」
 
-用法非常簡單。上面是一般查詢，下面只是在前面多加了 `EXPLAIN` 這個字。執行後，我們看到的不是商品資料，而是一份執行計畫，說明 MySQL 打算怎麼找資料。
+用法非常簡單。上面是一般查詢，下面只是在前面多加了 `EXPLAIN` 這個字。執行後，我們看到的不是商品資料，而是一份執行計畫，說明 MySQL 打算怎麼找資料。因為不會真的執行，就算是很大的表，也可以放心使用。
 
-因為不會真的執行，就算是對很大的表，也可以放心使用。
+輸出的欄位很多，我們先看兩個就好。`key` 是實際用到的索引，顯示 NULL 就代表沒用到。`rows` 是預計要掃描幾筆資料，越少越好。
 
-輸出的欄位很多，我們先看表格裡這四個重點。`type` 是找資料的方式，`key` 是實際用到的索引，`rows` 是預計要掃描的筆數，`Extra` 是額外的提示。看懂這四個，就能判斷大部分的效能問題。
--->
-
----
-
-# EXPLAIN type 欄位
-
-`type` 是 EXPLAIN 裡最重要的欄位，顯示 MySQL 選擇的存取類型：
-
-| type 值 | 說明 | 效能 |
-| --- | --- | --- |
-| `const` | 主鍵或唯一索引等值查詢，最多一筆結果 | ⭐⭐⭐⭐⭐ 最佳 |
-| `eq_ref` | 唯一索引 JOIN，每個組合最多一筆 | ⭐⭐⭐⭐⭐ |
-| `ref` | 非唯一索引等值查詢 | ⭐⭐⭐⭐ |
-| `range` | 索引範圍掃描（BETWEEN、>、<、IN）| ⭐⭐⭐ |
-| `index` | 全索引掃描（比 ALL 好，但仍掃全索引）| ⭐⭐ |
-| `ALL` | 全表掃描，沒有用到索引 | ⭐ 最差 |
-
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-⚠️ <b>警示訊號：</b>如果 type = ALL 且 rows 很大（幾千、幾萬），這個查詢幾乎肯定需要加索引。
-</div>
-
-<!--
-`type` 是 EXPLAIN 裡最重要的欄位，它告訴我們 MySQL 用什麼方式找資料。表格由上到下，從最快排到最慢。
-
-最好的是 `const`，例如用主鍵查詢 id 等於 5，MySQL 可以直接定位到那一筆。`eq_ref` 和 `ref` 也都有用到索引，效率很好。`range` 是用索引掃描一段範圍，通常也可以接受。
-
-最差的是 `ALL`，代表全表掃描，每一列都要看。如果表有一百萬筆，就要檢查一百萬筆。
-
-所以記住一個原則：type 越接近 const 越快。看到 ALL，而且 rows 又很大，這個查詢幾乎一定需要加索引。
--->
-
----
-
-# EXPLAIN Extra 欄位解讀
-
-| Extra 值 | 說明 | 應對方式 |
-| --- | --- | --- |
-| `Using index` | 只讀索引，不需要讀表（覆蓋索引）| 很好！不需要改 |
-| `Using where` | 在 WHERE 條件篩選 | 通常正常，看是否可加索引 |
-| `Using filesort` | 排序時無法使用索引，需額外排序操作 | 考慮在 ORDER BY 欄位加索引 |
-| `Using temporary` | 需要建立暫時表（多見於 GROUP BY 或 UNION）| 效能警告，考慮重寫查詢或加索引 |
-| `Using index condition` | Index Condition Pushdown（ICP）最佳化 | MySQL 自動最佳化，通常是好事 |
-
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-⚠️ <b>效能警告：</b>同時出現 <code>Using filesort</code> 和 <code>Using temporary</code>，代表這個查詢效能很差，需要重點最佳化。
-</div>
-
-<!--
-`Extra` 欄位提供更多執行細節，表格整理了最常見的幾種。
-
-`Using index` 是好消息，代表 MySQL 只讀索引就拿到所有需要的資料，不用再回去讀資料表，這叫做覆蓋索引，速度非常快。
-
-`Using filesort` 代表排序沒辦法利用索引，MySQL 得額外做一次排序，通常是排序的欄位沒有合適的索引。
-
-`Using temporary` 更嚴重，代表 MySQL 得建一張暫時表才能完成查詢，常見於複雜的 GROUP BY，會消耗額外的記憶體。
-
-如果 filesort 和 temporary 同時出現，就代表這個查詢需要優先處理，可能要加合適的複合索引，或是改寫查詢。
--->
-
----
-
-# EXPLAIN 實戰範例
-
-用 EXPLAIN 診斷一個慢查詢並修正：
-
-```sql
--- 慢查詢：category 和 price 沒有索引
-EXPLAIN SELECT name, price
-FROM products
-WHERE category = '手機' AND price > 10000
-ORDER BY price DESC;
--- 結果：type=ALL, key=NULL, rows=50000, Extra=Using filesort
-
--- 建立複合索引
-CREATE INDEX idx_cat_price ON products (category, price);
-
--- 再次 EXPLAIN
-EXPLAIN SELECT name, price
-FROM products
-WHERE category = '手機' AND price > 10000
-ORDER BY price DESC;
--- 結果：type=range, key=idx_cat_price, rows=120, Extra=Using index condition
-```
-
-<!--
-這頁示範一次完整的診斷流程：先 EXPLAIN 找問題，加上索引，再 EXPLAIN 驗證。
-
-查詢的目的是找出一萬元以上的手機，依價格由高到低排列。
-
-第一次 EXPLAIN 的結果很差。type 是 ALL，key 是 NULL，代表完全沒用到索引。rows 是五萬，整張表都掃過一遍，Extra 還出現 filesort。
-
-接著我們建立一個 `(category, price)` 的複合索引。分類是等於條件，放在前面。價格是範圍和排序，放在後面。
-
-再 EXPLAIN 一次，type 變成 range，key 用到了新索引，rows 從五萬降到一百二十筆，filesort 也不見了，因為索引裡的價格本來就排好順序了。
-
-同一個查詢，掃描的筆數少了好幾百倍。
+如果 key 是 NULL，rows 又接近整張表的筆數，就像在沒有目錄的字典裡一頁一頁翻。這時候，就該考慮幫查詢條件的欄位加索引了。
 -->
 
 ---
@@ -379,8 +273,7 @@ ORDER BY price DESC;
 - **索引種類** — B-Tree（預設）、UNIQUE、FULLTEXT、複合索引
 - **何時加索引** — WHERE / JOIN / ORDER BY 的欄位；避免低選擇性欄位
 - **EXPLAIN** — 在 SELECT 前加 EXPLAIN，查看執行計畫而不執行查詢
-- **type 欄位** — ALL（最差）→ range → ref → const（最好）
-- **Extra 欄位** — Using filesort / Using temporary 是效能警告
+- **key 與 rows** — key 是 NULL、rows 很大，就是需要加索引的訊號
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
 🚀 <b>下一章：</b>我們將學習 VIEW 視圖，學會如何把複雜的 SQL 查詢包裝成可重複使用的虛擬資料表！
@@ -389,9 +282,9 @@ ORDER BY price DESC;
 <!--
 我們整理這一章。索引就像書的目錄，讓查詢不用掃描整張表，複合索引要遵守最左前綴規則。索引適合加在 WHERE、JOIN、排序常用的欄位。
 
-EXPLAIN 讓我們在不執行的情況下看到執行計畫。type 從 ALL 最差到 const 最好，Extra 出現 filesort 或 temporary 就是警訊。
+EXPLAIN 讓我們在不執行的情況下看到執行計畫。key 是 NULL、rows 又很大，就是需要加索引的訊號。
 
-最好的流程是先寫出正確的查詢，再用 EXPLAIN 診斷，有針對性地加索引。接下來用兩題練習試試看。
+最好的流程是先寫出正確的查詢，再用 EXPLAIN 檢查，有針對性地加索引。接下來用兩題練習試試看。
 -->
 
 ---
@@ -411,25 +304,24 @@ ORDER BY order_date DESC
 LIMIT 10;
 
 -- EXPLAIN 輸出（模擬）：
--- type: ALL, key: NULL, rows: 1000000
--- Extra: Using where; Using filesort
+-- key: NULL, rows: 1000000
 ```
 
 **任務：**
-1. 說明這個查詢的效能問題
-2. 提出你的索引最佳化方案
-3. 說明加索引後 EXPLAIN 預期會有什麼改變
+1. 從 `key` 和 `rows` 說明這個查詢的效能問題
+2. 提出你的索引最佳化方案（寫出 CREATE INDEX）
+3. 說明加索引後 `key` 和 `rows` 預期會有什麼改變
 
 <!--
 第一題，我們來讀一份 EXPLAIN 的結果。這張訂單表有一百萬筆資料，查詢要找出某位顧客已完成的訂單，依日期由新到舊，取前十筆。
 
-畫面上模擬了 EXPLAIN 的輸出。請大家說明這個查詢有什麼效能問題，提出索引的最佳化方案，並預測加了索引之後，EXPLAIN 會有什麼變化。
+畫面上模擬了 EXPLAIN 的輸出。請大家從 key 和 rows 說明這個查詢有什麼問題，寫出要建立的索引，並預測加了索引之後，這兩個欄位會怎麼變。
 
-思考一下，應該建好幾個單欄位的索引，還是一個複合索引？如果是複合索引，欄位順序怎麼排？
+思考一下，WHERE 裡有兩個條件，應該建兩個單欄位的索引，還是一個複合索引？
 
 我們先暫停一下，自己分析看看。
 
-【講師】給大家五到十分鐘，可以請同學先說說看 type 和 Extra 透露了什麼。
+【講師】給大家五到十分鐘，可以請同學先說說看 key 是 NULL 代表什麼。
 -->
 
 ---
@@ -439,28 +331,23 @@ layout: default
 # 練習 1：解題提示
 
 **問題分析：**
-- `type=ALL`：全表掃描 100 萬筆
 - `key=NULL`：沒有用到任何索引
-- `Using filesort`：ORDER BY 無法用索引，需要額外排序
+- `rows=1000000`：整張表 100 萬筆全部掃一遍
 
 **最佳化方案：**
 
 ```sql
--- 建立複合索引，欄位順序：等值條件在前，範圍/排序在後
-CREATE INDEX idx_cust_status_date
-  ON orders (customer_id, status, order_date DESC);
+-- 建立複合索引：WHERE 用到的兩個欄位
+CREATE INDEX idx_cust_status
+  ON orders (customer_id, status);
 ```
 
 <!--
-我們先看問題分析。type 是 ALL，代表掃了一百萬筆。key 是 NULL，代表沒有任何索引可用。Extra 出現 filesort，代表排序也得額外處理。
+我們先看問題分析。key 是 NULL，代表沒有任何索引可用。rows 是一百萬，等於整張表都掃過一遍，只為了找出一位顧客的十筆訂單。
 
-最佳化方案是建立一個三欄的複合索引，這也回答了剛才的思考題，欄位順序是關鍵。
+最佳化方案是幫 WHERE 用到的兩個欄位，建立一個複合索引。這也回答了剛才的思考題，兩個條件常常一起出現，用一個複合索引就能同時照顧到。
 
-`customer_id` 是等於條件，放第一個。`status` 也是等於條件，放第二個。`order_date` 是排序用的，放最後，而且設成降冪。
-
-這樣 MySQL 可以先找到這位顧客，再從中挑出已完成的訂單，而這些訂單在索引裡本來就依日期排好了，直接取前十筆，不用另外排序。
-
-所以原則是，等於條件放前面，範圍和排序放後面。
+欄位順序也有講究。`customer_id` 放第一個，因為每位顧客只佔全部訂單的一小部分，先用它篩選，範圍一下子就縮小了。`status` 放第二個，在這位顧客的訂單裡，再挑出已完成的。
 -->
 
 ---
@@ -473,17 +360,15 @@ layout: default
 
 | 欄位 | 改善前 | 改善後（預期）|
 | --- | --- | --- |
-| `type` | ALL | ref 或 range |
-| `key` | NULL | idx_cust_status_date |
+| `key` | NULL | idx_cust_status |
 | `rows` | 1,000,000 | 少量（數十到數百）|
-| `Extra` | Using where; Using filesort | Using index condition |
 
 <!--
 加上索引之後，EXPLAIN 預期會有這些變化。
 
-type 從 ALL 變成 ref 或 range，代表用上了索引。key 會顯示我們剛建立的索引名稱。rows 從一百萬，降到幾十到幾百筆。Extra 裡的 filesort 也會消失。
+key 會顯示我們剛建立的索引名稱，代表 MySQL 用上了它。rows 從一百萬，降到幾十到幾百筆，只需要看這位顧客已完成的訂單。
 
-這裡再複習一次最左前綴規則。這個三欄索引，可以用在只查顧客編號、查顧客編號加狀態，或是三個條件都有的查詢。但如果只用狀態查詢，或只用日期查詢，就沒辦法用到它，因為少了最左邊的顧客編號。
+這裡再複習一次最左前綴規則。這個索引可以用在只查顧客編號，或是顧客編號加狀態的查詢。但如果只用狀態查詢，就沒辦法用到它，因為少了最左邊的顧客編號。
 -->
 
 ---
@@ -509,7 +394,7 @@ layout: default
 
 請大家幫每個查詢提出對應的索引方案，並且找出哪一個查詢就算加了索引也沒有效果，說明原因。
 
-這裡有兩個思考方向。第四個查詢的 LIKE，前面多了一個百分比符號，B-Tree 索引還用得上嗎？第三個查詢先篩選庫存大於零，再依價格排序，建一個 `(stock, price)` 的複合索引能完全解決嗎？
+這裡給一個思考方向。第四個查詢的 LIKE，前面多了一個百分比符號，想想看字典的目錄，還幫得上忙嗎？
 
 我們先暫停一下，自己想想看。
 
@@ -526,7 +411,7 @@ layout: default
 | --- | --- | --- |
 | `WHERE customer_id = ?` | `INDEX (customer_id)` | 外鍵欄位，標準索引 |
 | `WHERE order_date BETWEEN ? AND ?` | `INDEX (order_date)` | 範圍查詢，B-Tree 索引有效 |
-| `WHERE stock > 0 ORDER BY price` | `INDEX (stock, price)` | 複合索引：先篩 stock，再排序 price |
+| `WHERE stock > 0 ORDER BY price` | `INDEX (price)` | 排序欄位加索引，依價格順序讀取 |
 | `WHERE name LIKE '%iPhone%'` | ❌ B-Tree 索引無效 | 前導 % 無法使用索引 |
 
 **LIKE '%xxx%' 的替代方案：**
@@ -543,9 +428,9 @@ SELECT * FROM products WHERE name LIKE 'iPhone%';
 <!--
 我們來看解答。前兩個查詢很單純，顧客編號是外鍵，加一般索引就好。日期範圍查詢，B-Tree 索引也能處理。
 
-第三個查詢要多想一步。`(stock, price)` 能幫忙篩選庫存，可是庫存大於零是範圍條件，範圍之後的欄位沒辦法再用來排序，所以 filesort 可能還在。這也是最左前綴規則的延伸，範圍條件會讓後面的欄位失去排序的效果。
+第三個查詢，大部分商品都有庫存，用庫存篩選效果有限，反而是排序比較吃力。所以幫價格加索引，索引裡的價格本來就排好了，MySQL 照順序讀就好。
 
-第四個查詢加了索引也沒用。索引是依字首排序的，開頭是萬用字元，就找不到起點。
+第四個查詢加了索引也沒用。這就像字典的目錄是依字首排列的，要找「中間包含某個字」的詞，目錄幫不上忙，只能整本翻。
 
 替代方案有兩個。一是改用 FULLTEXT 索引，搭配 `MATCH AGAINST` 做全文搜尋。二是改成 `LIKE 'iPhone%'`，就能用 B-Tree 索引，不過意思變成以 iPhone 開頭，跟包含 iPhone 不完全一樣。
 
@@ -561,7 +446,7 @@ layout: end
 有任何問題嗎？
 
 <!--
-今天我們學會了兩個工具。索引讓查詢變快，EXPLAIN 讓我們看見查詢慢在哪裡。最重要的兩個觀念是：看到 type 是 ALL、rows 又很大，就要考慮加索引；複合索引的欄位順序很重要，要遵守最左前綴規則。
+今天我們學會了兩個工具。索引讓查詢變快，EXPLAIN 讓我們確認索引有沒有用上。最重要的兩個觀念是：看到 key 是 NULL、rows 又很大，就要考慮加索引；複合索引的欄位順序很重要，要遵守最左前綴規則。
 
 下一章，我們要學 VIEW 視圖，把複雜的查詢包裝成可以重複使用的虛擬資料表。我們下一章見。
 

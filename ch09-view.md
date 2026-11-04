@@ -62,11 +62,10 @@ layout: default
 - **什麼是 VIEW？** — VIEW 的概念、優點與限制
 - **CREATE VIEW 建立視圖** — 基本語法與範例
 - **管理 VIEW** — 修改、查看、刪除視圖
-- **可更新視圖** — 什麼情況下可以對 VIEW 做 DML
-- **VIEW 的使用注意事項** — 效能考量與最佳實踐
+- **VIEW 的使用注意事項** — 效能考量
 
 <!--
-這一章先認識 VIEW 是什麼，有哪些優點和限制。接著學怎麼建立 VIEW，以及查看、修改、刪除的管理方式。最後是進階的部分，什麼樣的 VIEW 可以拿來新增修改資料，以及使用時要注意的效能問題。
+這一章先認識 VIEW 是什麼，有哪些優點和限制。接著學怎麼建立 VIEW，以及查看、修改、刪除的管理方式。最後看使用 VIEW 時要注意的效能問題。
 
 整章會延續我們熟悉的顧客和訂單範例。
 -->
@@ -81,7 +80,7 @@ layout: default
 | --- | --- | --- |
 | 儲存資料 | ✅ 實際儲存資料 | ❌ 不儲存，每次動態查詢 |
 | 可以查詢 | ✅ | ✅ |
-| 可以 INSERT/UPDATE | ✅ | ⚠️ 有條件限制 |
+| 可以 INSERT/UPDATE | ✅ | ⚠️ 有條件限制（本課程只用來查詢）|
 | 用途 | 儲存資料 | 簡化查詢、封裝邏輯、存取控制 |
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
@@ -93,7 +92,7 @@ layout: default
 
 我們用 Excel 來想像。一份試算表裡，有一張工作表放原始資料，另一張工作表全是公式，引用原始資料並整理成報表。那張全是公式的工作表，本身沒存資料，打開時才即時算出結果。VIEW 就是這樣的東西。
 
-表格比較了它和資料表的差別。資料表真的存資料，VIEW 只是一扇窗。兩者都能查詢，但 VIEW 要修改資料會有條件限制，後面會講。
+表格比較了它和資料表的差別。資料表真的存資料，VIEW 只是一扇窗。兩者都能查詢，但 VIEW 要修改資料會有很多條件限制，所以這門課我們只用它來查詢。
 -->
 
 ---
@@ -219,7 +218,7 @@ CREATE VIEW public_customers AS
 SELECT
   id,
   name,
-  LEFT(email, 3) || '***@***.com' AS masked_email
+  CONCAT(LEFT(email, 3), '***@***.com') AS masked_email
 FROM customers
 WHERE is_active = 1;
 ```
@@ -231,11 +230,11 @@ WHERE is_active = 1;
 <!--
 這個範例示範 VIEW 的另一個用途，就是保護敏感資料。
 
-原本的顧客表裡有 email、電話、信用卡資料這些敏感欄位。我們建立一個叫 `public_customers` 的 VIEW，只放顧客編號和姓名，email 則做遮罩，只露出前三個字元，後面用星號蓋住。
+原本的顧客表裡有 email、電話、信用卡資料這些敏感欄位。我們建立一個叫 `public_customers` 的 VIEW，只放顧客編號和姓名，email 則做遮罩。`LEFT(email, 3)` 取出前三個字元，`CONCAT` 再接上一串星號，把後面蓋住。
 
 接著用 MySQL 的權限設定，讓客服系統的帳號只能查詢這個 VIEW，不能直接碰原本的顧客表。這樣客服查得到需要的資訊，卻看不到完整的 email 和信用卡資料。
 
-【講師】範例中用兩條直線串接字串的寫法，在 MySQL 預設設定下是邏輯 OR，不會串接字串。實際執行請改用 `CONCAT(LEFT(email, 3), '***@***.com')`。
+這裡有個常見的坑。有些資料庫用兩條直線串接字串，但在 MySQL 裡，兩條直線預設是邏輯的 OR，所以串接字串一定要用 `CONCAT`。
 -->
 
 ---
@@ -296,79 +295,10 @@ class: flex flex-col justify-center items-center text-center
 ---
 
 # 第三部分
-# 可更新視圖與注意事項
+# 使用 VIEW 的注意事項
 
 <!--
-最後一部分是進階主題。什麼樣的 VIEW 可以用來修改資料，以及使用 VIEW 時的注意事項。
--->
-
----
-
-# 可更新視圖（Updatable View）
-
-某些 VIEW 允許透過 VIEW 對底層資料表執行 INSERT、UPDATE、DELETE：
-
-```sql
--- 建立一個簡單的可更新 VIEW
-CREATE VIEW active_products AS
-SELECT id, name, price, stock
-FROM products
-WHERE is_active = 1;
-
--- 透過 VIEW 更新底層資料
-UPDATE active_products
-SET price = 24900.00
-WHERE id = 5;
-
--- 透過 VIEW 刪除底層資料（會刪除 products 表的對應列）
-DELETE FROM active_products WHERE id = 5;
-```
-
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>注意：</b>透過 VIEW 執行的 DML，實際上是作用在底層資料表，不是在 VIEW 本身。
-</div>
-
-<!--
-有些 VIEW 允許我們透過它，對底層的資料表做新增、修改和刪除。
-
-範例先建了一個 `active_products`，只包含上架中的商品。接著對這個 VIEW 執行 UPDATE，把五號商品的價格改掉，再執行 DELETE 把它刪除。
-
-要記住，這些操作實際上作用在底層的 `products` 表。執行後，商品表裡五號商品的價格真的被改了，接著也真的被刪掉了。
-
-這裡有個容易困惑的細節。如果透過這個 VIEW，把某個商品的上架狀態改成 0，它就不再符合 VIEW 的條件，從 VIEW 裡消失，但在商品表裡還在。
-
-要避免這種狀況，可以在建立 VIEW 時加上 `WITH CHECK OPTION`，確保透過 VIEW 修改後的資料，依然符合 VIEW 的條件。
--->
-
----
-
-# VIEW 的不可更新情況
-
-以下類型的 VIEW 是唯讀的，不支援 INSERT / UPDATE / DELETE：
-
-| 情況 | 說明 |
-| --- | --- |
-| 包含 `DISTINCT` | 無法映射到唯一一筆底層資料 |
-| 包含聚合函式 | `COUNT`、`SUM`、`AVG` 等計算出來的值無法反向更新 |
-| 包含 `GROUP BY` | 分組後的結果無法對應到單筆資料 |
-| 包含 `UNION` | 多個查詢的合併結果無法確定來源 |
-| 包含子查詢 | 複雜的來源無法確定更新目標 |
-| 涉及多張表的 JOIN | 無法確定 DML 應該更新哪張表 |
-
-<div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-💡 <b>判斷原則：</b>如果 VIEW 的每一列都能對應到底層表的唯一一列，它通常是可更新的；如果不能，就是唯讀的。
-</div>
-
-<!--
-大多數比較複雜的 VIEW，其實都是唯讀的。表格列出了不能更新的情況，包含 DISTINCT、聚合函式、GROUP BY、UNION、子查詢，以及多張表的 JOIN。
-
-判斷原則就在畫面下方：VIEW 的每一列，能不能對應到底層表的唯一一列。
-
-舉例來說，VIEW 裡的訂單數量是 COUNT 算出來的，我們不可能把它從五改成三，就讓底層少掉兩筆訂單。真的要減少訂單，只能直接刪除訂單表裡的資料。
-
-我們前面建的 `customer_order_summary` 有分組，每一列代表很多筆訂單的摘要，所以它也是唯讀的。
-
-需要透過 VIEW 修改資料時，建議先實際測試。
+VIEW 用起來很方便，但它不是萬能的。最後我們來看使用時要注意的效能問題。
 -->
 
 ---
@@ -381,7 +311,6 @@ VIEW 讓程式碼更乾淨，但要注意效能問題：
 | --- | --- |
 | VIEW 是簡單查詢 | 效能和直接查詢相同 |
 | VIEW 包含複雜 JOIN | 每次查詢都重新執行 JOIN，無快取 |
-| 對 VIEW 加 WHERE 條件 | MySQL 有時能「推入」條件（Predicate Pushdown）最佳化 |
 | VIEW 套 VIEW | 巢狀 VIEW 效能差，盡量避免 |
 
 ```sql
@@ -398,11 +327,9 @@ WHERE ... AND ...;
 <!--
 最後來看效能。VIEW 讓程式碼變乾淨，但有一個陷阱：它不儲存資料，也不會快取結果。
 
-所以表格第二列提到，如果 VIEW 背後是四張表的 JOIN，每次查詢都會重新執行一次這個 JOIN，資料量大時就可能很慢。好消息是，在 VIEW 上加 WHERE 條件時，MySQL 有時能把條件往內推，提早過濾資料。
+所以表格第二列提到，如果 VIEW 背後是四張表的 JOIN，每次查詢都會重新執行一次這個 JOIN，資料量大時就可能很慢。
 
-特別要避免的是 VIEW 套 VIEW，也就是一個 VIEW 建立在另一個 VIEW 上，一層套一層。MySQL 要全部展開才能執行，效能很難掌握。程式碼裡的對照，就是建議這種情況直接查詢底層表，搭配合適的索引。
-
-如果真的需要把結果存起來，MySQL 本身不支援物化視圖，常見做法是另外建一張實體表，用排程定期更新。
+特別要避免的是 VIEW 套 VIEW，也就是一個 VIEW 建立在另一個 VIEW 上，一層套一層。MySQL 要全部展開才能執行，效能很難掌握。程式碼裡的對照，就是建議這種情況直接查詢底層表，搭配上一章學的索引。
 -->
 
 ---
@@ -415,17 +342,16 @@ WHERE ... AND ...;
 - **三大優點** — 簡化複雜查詢、提升安全性（欄位遮罩）、提高可維護性
 - **CREATE VIEW** — `CREATE [OR REPLACE] VIEW name AS SELECT ...`
 - **查看與管理** — `SHOW FULL TABLES`、`SHOW CREATE VIEW`、`DROP VIEW`
-- **可更新視圖** — 單表、無聚合、無 GROUP BY 的簡單 VIEW 可以做 DML
 - **效能注意** — VIEW 不快取結果，複雜 VIEW + 大資料量可能很慢
 
 <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-gray-700 text-sm text-left">
-🚀 <b>課程完成！</b>恭喜大家！從資料庫設計原則到 VIEW，我們走完了 MySQL 最重要的基礎課程。繼續學習：Stored Procedure、Transaction、Window Functions！
+🚀 <b>下一章：</b>我們將學習子查詢，把一個查詢的結果，當成另一個查詢的條件！
 </div>
 
 <!--
 我們整理這一章。VIEW 是一張虛擬資料表，背後是一個 SELECT，本身不存資料。它有三大優點：簡化查詢、保護敏感資料、集中管理業務邏輯。我們學了用 `CREATE OR REPLACE VIEW` 建立和修改，用 `SHOW` 查看，用 `DROP VIEW` 刪除。
 
-單表、沒有聚合、沒有分組的簡單 VIEW 可以修改資料，複雜的大多是唯讀的。而且 VIEW 不會讓查詢變快。
+最後要記得，VIEW 不會讓查詢變快，也要避免一層套一層。
 
 接下來，我們用兩題練習把 VIEW 練熟。
 -->
@@ -520,7 +446,7 @@ LIMIT 3;
 
 執行後，就能看到 2024 年收入最高的三個月。
 
-也要提醒，這兩個 VIEW 都有分組和聚合函式，所以都是唯讀的，不能透過它們修改資料。
+同樣的需求，如果沒有 VIEW，每次都得把分組統計整段重寫一遍。有了 VIEW，查詢就簡單多了。
 -->
 
 ---

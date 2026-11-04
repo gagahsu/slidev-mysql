@@ -110,27 +110,22 @@ style: |
     <Link to="ch07" class="chapter-card">
       <div class="chapter-num">Ch 7</div>
       <div>JOIN 合併查詢</div>
-      <div class="chapter-subtitle">INNER / LEFT / RIGHT / CROSS / Self</div>
+      <div class="chapter-subtitle">INNER / LEFT / RIGHT</div>
     </Link>
     <Link to="ch08" class="chapter-card">
       <div class="chapter-num">Ch 8</div>
       <div>Index 索引與執行計畫</div>
-      <div class="chapter-subtitle">B-Tree / EXPLAIN / type / Extra</div>
+      <div class="chapter-subtitle">B-Tree / 複合索引 / EXPLAIN</div>
     </Link>
     <Link to="ch09" class="chapter-card">
       <div class="chapter-num">Ch 9</div>
       <div>VIEW 視圖</div>
-      <div class="chapter-subtitle">CREATE VIEW / 可更新視圖 / 安全性</div>
+      <div class="chapter-subtitle">CREATE VIEW / 管理 / 安全性</div>
     </Link>
     <Link to="ch10" class="chapter-card">
       <div class="chapter-num">Ch 10</div>
       <div>子查詢與進階查詢</div>
       <div class="chapter-subtitle">IN / LIKE / EXISTS / Correlated Subquery</div>
-    </Link>
-    <Link to="ch11" class="chapter-card">
-      <div class="chapter-num">Ch 11</div>
-      <div>Flyway 資料庫版本控制</div>
-      <div class="chapter-subtitle">Migration / V R U / schema_history</div>
     </Link>
   </div>
 </div>
@@ -164,7 +159,4 @@ src: ./ch09-view.md
 ---
 ---
 src: ./ch10-subquery.md
----
----
-src: ./ch11-flyway.md
 ---
